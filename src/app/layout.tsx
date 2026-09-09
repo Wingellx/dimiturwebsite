@@ -22,12 +22,12 @@ const sans = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: {
-    default: `${site.artist} — Tattoo Artist`,
-    template: `%s — ${site.artist}`,
+    default: `${site.artist} | Tattooist in Lincoln`,
+    template: `%s | ${site.artist}`,
   },
   description: `${site.tagline}. View the portfolio and book an appointment with ${site.artist}.`,
   openGraph: {
-    title: `${site.artist} — Tattoo Artist`,
+    title: `${site.artist} | Tattooist in Lincoln`,
     description: site.tagline,
     type: "website",
   },

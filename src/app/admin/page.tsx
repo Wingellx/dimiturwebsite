@@ -125,13 +125,13 @@ export default async function AdminPage() {
         <h2 className="mb-2 font-display text-2xl">Weekly hours</h2>
         <p className="mb-5 text-sm text-muted">
           These repeat every week. Slot length decides how long each appointment
-          runs — set it to how long you actually want a session to be.
+          runs, so set it to how long you actually want a session to be.
         </p>
 
         <ul className="mb-6 divide-y divide-line border-y border-line">
           {rules.length === 0 ? (
             <li className="py-5 text-sm text-muted">
-              No hours set — nobody can book until you add some.
+              No hours set, so nobody can book until you add some.
             </li>
           ) : (
             rules.map((rule) => (
@@ -228,7 +228,7 @@ export default async function AdminPage() {
       <section>
         <h2 className="mb-2 font-display text-2xl">Days off</h2>
         <p className="mb-5 text-sm text-muted">
-          Block a single date — holiday, convention, anything. This overrides
+          Block a single date for a holiday, convention or anything else. This overrides
           your weekly hours.
         </p>
 

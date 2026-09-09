@@ -47,6 +47,6 @@ function altFromFilename(name: string): string {
     .trim();
 
   return base.length > 0
-    ? `${base.charAt(0).toUpperCase()}${base.slice(1)} — tattoo by Dimitur Penchev`
+    ? `${base.charAt(0).toUpperCase()}${base.slice(1)} tattoo by Dimitur Penchev`
     : "Tattoo by Dimitur Penchev";
 }

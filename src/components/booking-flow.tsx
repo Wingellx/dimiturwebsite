@@ -351,7 +351,7 @@ function DetailsFields() {
         name="clientPhone"
         type="tel"
         autoComplete="tel"
-        hint="Optional — useful if anything changes on the day."
+        hint="Optional, useful if anything changes on the day."
       />
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -372,8 +372,8 @@ function DetailsFields() {
           Anything else
         </label>
         <p className="mt-1 text-xs text-muted">
-          Style, meaning, whether it&apos;s a cover-up, allergies — anything
-          that helps with the drawing.
+          Style, meaning, whether it&apos;s a cover-up, allergies, and
+          anything else that helps with the drawing.
         </p>
         <textarea
           id="notes"
@@ -475,7 +475,7 @@ function ReferenceUpload({
       <p className="text-sm font-medium">Reference images</p>
       <p className="mt-1 text-xs text-muted">
         Up to {site.uploads.maxFiles} images, 10MB each. Screenshots, sketches,
-        photos of placement — whatever helps.
+        or a photo of the placement.
       </p>
 
       <div

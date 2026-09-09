@@ -25,7 +25,7 @@ export default async function BookPage() {
           </h1>
           <p className="mt-4 text-base leading-relaxed text-ink-soft">
             Pick a time that works, tell me what you have in mind, and the slot
-            is yours immediately — no waiting on a reply.
+            is yours immediately, with no waiting on a reply.
           </p>
         </header>
 

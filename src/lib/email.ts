@@ -52,7 +52,7 @@ export async function sendClientConfirmation(
     await resend.emails.send({
       from: emailFrom,
       to: booking.clientEmail,
-      subject: `Your tattoo appointment — ${when(booking.startsAt, booking.endsAt)}`,
+      subject: `Your tattoo appointment: ${when(booking.startsAt, booking.endsAt)}`,
       html: shell(`
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">You're booked in</h1>
         <p style="margin:0 0 20px">Hi ${escapeHtml(booking.clientName)}, your appointment with ${site.artist} is confirmed.</p>
@@ -83,7 +83,7 @@ export async function sendArtistNotification(
       from: emailFrom,
       to,
       replyTo: booking.clientEmail,
-      subject: `New booking — ${booking.clientName}, ${when(booking.startsAt, booking.endsAt)}`,
+      subject: `New booking: ${booking.clientName}, ${when(booking.startsAt, booking.endsAt)}`,
       html: shell(`
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">New booking</h1>
         <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
@@ -124,7 +124,7 @@ export async function sendCancellationNotice(input: {
     await resend.emails.send({
       from: emailFrom,
       to: recipients,
-      subject: `Appointment cancelled — ${when(input.startsAt, input.endsAt)}`,
+      subject: `Appointment cancelled: ${when(input.startsAt, input.endsAt)}`,
       html: shell(`
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">Appointment cancelled</h1>
         <p style="margin:0 0 20px">The appointment on <strong>${when(input.startsAt, input.endsAt)}</strong> (ref ${input.reference}) has been cancelled${input.cancelledBy === "artist" ? " by the studio" : ""}. That slot is now free for someone else.</p>

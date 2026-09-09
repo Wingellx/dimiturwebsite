@@ -24,7 +24,7 @@ export default async function HomePage() {
           </h1>
           <p className="mt-7 max-w-xl text-base leading-relaxed text-ink-soft md:text-lg">
             Custom work, drawn for one person and one placement. Bring an idea,
-            a reference, or nothing at all — we&apos;ll design it together
+            a reference, or nothing at all. We&apos;ll design it together
             before a needle touches skin.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -64,8 +64,8 @@ export default async function HomePage() {
           <div className="space-y-5 text-base leading-relaxed text-ink-soft md:col-span-8">
             <p>
               Private, unhurried, and one client at a time. Every appointment
-              starts with the design — placement, size, and how it will age on
-              you — before anything is committed to skin.
+              starts with the design: placement, size, and how it will age on
+              you, before anything is committed to skin.
             </p>
             <p>
               Send your references and notes when you book and they arrive with

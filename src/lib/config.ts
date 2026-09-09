@@ -20,12 +20,12 @@ type SiteConfig = {
 
 export const site: SiteConfig = {
   artist: "Dimitur Penchev",
-  tagline: "Fine line & blackwork tattooing",
+  tagline: "Tattooist · Lincoln",
   /** Shown in the footer and on the confirmation email. */
   studio: {
     name: "",
     addressLines: [],
-    city: "",
+    city: "Lincoln",
   },
   contact: {
     email: "",
