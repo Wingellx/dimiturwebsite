@@ -4,11 +4,15 @@ import { redirect } from "next/navigation";
 import { isAuthenticated } from "@/lib/admin-auth";
 import {
   listBookings,
+  getAvailability,
   getBookingImages,
+  getBookingMoves,
   getRota,
   getDayOverrides,
   type Booking,
+  type BookingMove,
 } from "@/lib/data";
+import { MoveBooking, type MoveOption } from "@/components/move-booking";
 import {
   bookingHorizon,
   dateRange,
@@ -21,7 +25,7 @@ import {
   type RotaSettings,
 } from "@/lib/availability";
 import { site } from "@/lib/config";
-import { logout, artistCancelBooking, markCompleted } from "@/app/actions/admin";
+import { logout, artistCancelBooking, artistMoveBooking, markCompleted } from "@/app/actions/admin";
 import { AdminCalendar, type DayTile } from "@/components/admin-calendar";
 
 export const metadata: Metadata = {
@@ -100,6 +104,19 @@ export default async function AdminPage() {
     ] as const),
   );
   const imagesById = new Map(images);
+  const [movesById, availability] = await Promise.all([
+    getBookingMoves(bookings.map((b) => b.id)),
+    getAvailability(),
+  ]);
+  const optionsFor = (booking: Booking): MoveOption[] =>
+    availability
+      .flatMap((day) => day.slots)
+      .filter((slot) => slot.session === booking.session_type)
+      .map((slot) => ({
+        startsAt: slot.startsAt,
+        endsAt: slot.endsAt,
+        label: `${studioDateLabel(slot.startsAt)} · ${slot.label}`,
+      }));
 
   return (
     <div className="container-page py-10 md:py-16">
@@ -135,6 +152,8 @@ export default async function AdminPage() {
                 key={booking.id}
                 booking={booking}
                 images={imagesById.get(booking.id) ?? []}
+                moves={movesById.get(booking.id) ?? []}
+                moveOptions={optionsFor(booking)}
               />
             ))}
           </ul>
@@ -189,9 +208,13 @@ export default async function AdminPage() {
 function BookingCard({
   booking,
   images,
+  moves,
+  moveOptions,
 }: {
   booking: Booking;
   images: string[];
+  moves: BookingMove[];
+  moveOptions: MoveOption[];
 }) {
   return (
     <li className="rounded-sm border border-line bg-paper-raised p-5">
@@ -203,6 +226,13 @@ function BookingCard({
           </p>
           <p className="mt-0.5 text-xs tracking-[0.08em] text-muted uppercase">
             {site.sessions[booking.session_type].label} · {site.sessions[booking.session_type].price}
+            {" · "}
+            {booking.refunded_at
+              ? "Deposit refunded"
+              : booking.deposit_paid_at
+                ? `${site.deposit.label} deposit paid`
+                : "No deposit"}
+            {booking.refund_locked ? " · Non-refundable (moved inside 72h)" : ""}
           </p>
           <p className="mt-1 text-sm text-ink-soft">
             {booking.client_name} ·{" "}
@@ -255,6 +285,29 @@ function BookingCard({
         </ul>
       ) : null}
 
+      {moves.length > 0 ? (
+        <ul className="mt-4 space-y-1 text-xs text-muted">
+          {moves.map((move) => (
+            <li key={move.created_at}>
+              Moved by {move.moved_by === "artist" ? "you" : "client"}: {studioDateLabel(move.old_starts_at)}{" "}
+              {studioTimeLabel(move.old_starts_at)} → {studioDateLabel(move.new_starts_at)}{" "}
+              {studioTimeLabel(move.new_starts_at)}
+              {move.reason ? ` — “${move.reason}”` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="mt-4">
+        <MoveBooking
+          action={artistMoveBooking}
+          options={moveOptions}
+          hidden={{ id: booking.id }}
+          reasonRequired={false}
+          buttonLabel="Move"
+        />
+      </div>
+
       <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-4">
         <form action={markCompleted}>
           <input type="hidden" name="id" value={booking.id} />
@@ -271,7 +324,7 @@ function BookingCard({
             type="submit"
             className="rounded-sm border border-line-strong px-4 py-2 text-sm text-muted hover:border-ink hover:text-ink"
           >
-            Cancel & notify client
+            Cancel, refund & notify client
           </button>
         </form>
       </div>

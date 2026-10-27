@@ -11,7 +11,9 @@ import {
 } from "@/lib/admin-auth";
 import { adminClient } from "@/lib/supabase";
 import { sendCancellationNotice } from "@/lib/email";
-import { getRota } from "@/lib/data";
+import { getBookingById, getRota } from "@/lib/data";
+import { moveToSlot, refundIfPaid } from "@/lib/booking-changes";
+import { withinCutoff } from "@/lib/policy";
 import { planForDate, type DayOverride } from "@/lib/availability";
 
 /** Every mutation below goes through this first. */
@@ -47,11 +49,14 @@ export async function logout(): Promise<void> {
   redirect("/admin/login");
 }
 
+/** Dim cancelling always refunds the deposit, even a refund-locked one. */
 export async function artistCancelBooking(formData: FormData): Promise<void> {
   await requireAdmin();
 
   const id = String(formData.get("id") ?? "");
   if (!id) return;
+  const booking = await getBookingById(id);
+  if (!booking || booking.status !== "confirmed") return;
 
   const { data } = await adminClient()
     .from("bookings")
@@ -62,22 +67,54 @@ export async function artistCancelBooking(formData: FormData): Promise<void> {
     })
     .eq("id", id)
     .eq("status", "confirmed")
-    .select("reference, client_name, client_email, starts_at, ends_at")
+    .select("id")
     .maybeSingle();
 
   if (data) {
+    const refunded = await refundIfPaid(booking);
     await sendCancellationNotice({
-      reference: data.reference as string,
-      clientName: data.client_name as string,
-      clientEmail: data.client_email as string,
-      startsAt: data.starts_at as string,
-      endsAt: data.ends_at as string,
+      reference: booking.reference,
+      clientName: booking.client_name,
+      clientEmail: booking.client_email,
+      startsAt: booking.starts_at,
+      endsAt: booking.ends_at,
       cancelledBy: "artist",
+      refunded,
     });
   }
 
   revalidatePath("/admin");
   revalidatePath("/book");
+}
+
+/**
+ * Dim can move any confirmed booking at any time — this is how under-72-hour
+ * requests get handled. Moving one that is already inside the window locks
+ * the deposit as non-refundable, so "move it, then cancel" can't turn a late
+ * cancellation into a refund.
+ */
+export async function artistMoveBooking(
+  _prev: { ok: boolean; error?: string },
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  await requireAdmin();
+
+  const id = String(formData.get("id") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const endsAt = String(formData.get("endsAt") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+
+  const booking = await getBookingById(id);
+  if (!booking || booking.status !== "confirmed") return { ok: false, error: "Booking not found." };
+
+  const lock = withinCutoff(booking.starts_at, new Date());
+  const result = await moveToSlot(booking, { startsAt, endsAt }, reason, "artist", lock ? { refund_locked: true } : {});
+  if (!result.ok) return { ok: false, error: result.error };
+
+  revalidatePath("/admin");
+  revalidatePath("/book");
+  revalidatePath(`/booking/${booking.reference}`);
+  return { ok: true };
 }
 
 export async function markCompleted(formData: FormData): Promise<void> {

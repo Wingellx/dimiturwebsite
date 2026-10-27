@@ -93,7 +93,7 @@ export default async function HomePage() {
                   Changes
                 </dt>
                 <dd className="mt-2 text-sm">
-                  Reschedule from your confirmation email
+                  Move or cancel online up to {site.changeCutoffHours} hours before
                 </dd>
               </div>
             </dl>

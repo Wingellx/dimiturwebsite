@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getBookingByReference } from "@/lib/data";
+import { getAvailability, getBookingByReference } from "@/lib/data";
+import { clientCanChange } from "@/lib/policy";
+import { moveBooking } from "@/app/actions/booking";
+import { MoveBooking } from "@/components/move-booking";
+import { PaymentPending } from "@/components/payment-pending";
 import { studioDateLabel, studioTimeLabel } from "@/lib/availability";
 import { site } from "@/lib/config";
 import { CancelBooking } from "@/components/cancel-booking";
@@ -25,7 +29,47 @@ export default async function BookingPage({
   const booking = await getBookingByReference(reference);
   if (!booking) notFound();
 
+  if (booking.status === "pending_payment" || booking.status === "expired") {
+    const pending = booking.status === "pending_payment";
+    return (
+      <div className="container-page py-12 md:py-20">
+        <div className="mx-auto max-w-xl">
+          <p className="text-xs font-medium tracking-[0.16em] text-muted uppercase">
+            {pending ? "Payment" : "Not completed"}
+          </p>
+          <h1 className="mt-4 font-display text-4xl leading-none md:text-5xl">
+            {pending ? "Almost there" : "This booking wasn't completed"}
+          </h1>
+          {pending ? (
+            <PaymentPending />
+          ) : (
+            <p className="mt-4 text-base leading-relaxed text-ink-soft">
+              The deposit wasn&apos;t paid within {site.paymentHoldMinutes} minutes, so the slot
+              was released. Nothing has been charged.
+            </p>
+          )}
+          <Link href="/book" className="mt-8 inline-block rounded-sm bg-ink px-6 py-3 text-sm font-medium text-paper">
+            {pending ? "Start again" : "Book a time"}
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const cancelled = booking.status === "cancelled";
+  const ownsLink = Boolean(token) && token === booking.cancel_token;
+  const canChange = booking.status === "confirmed" && clientCanChange(booking.starts_at, new Date(), booking.refund_locked);
+  const moveOptions =
+    ownsLink && canChange
+      ? (await getAvailability())
+          .flatMap((day) => day.slots)
+          .filter((slot) => slot.session === booking.session_type)
+          .map((slot) => ({
+            startsAt: slot.startsAt,
+            endsAt: slot.endsAt,
+            label: `${studioDateLabel(slot.startsAt)} · ${slot.label}`,
+          }))
+      : [];
 
   return (
     <div className="container-page py-12 md:py-20">
@@ -40,6 +84,7 @@ export default async function BookingPage({
         {cancelled ? (
           <p className="mt-4 text-base leading-relaxed text-ink-soft">
             This appointment has been cancelled and the slot released.
+            {booking.refunded_at ? ` Your ${site.deposit.label} deposit has been refunded.` : ""}
           </p>
         ) : (
           <p className="mt-4 text-base leading-relaxed text-ink-soft">
@@ -63,6 +108,13 @@ export default async function BookingPage({
               ({site.sessions[booking.session_type].price}, paid on the day)
             </span>
           </Row>
+          {booking.deposit_paid_at ? (
+            <Row label="Deposit">
+              {booking.refunded_at
+                ? `${site.deposit.label} refunded`
+                : `${site.deposit.label} paid, taken off your final price`}
+            </Row>
+          ) : null}
           <Row label="Reference">
             <span className="font-mono">{booking.reference}</span>
           </Row>
@@ -80,13 +132,52 @@ export default async function BookingPage({
           ) : null}
         </dl>
 
-        {!cancelled && token ? (
-          <div className="mt-10">
+        {!cancelled && ownsLink && canChange ? (
+          <div className="mt-10 space-y-6">
+            <MoveBooking
+              action={moveBooking}
+              options={moveOptions}
+              hidden={{ reference: booking.reference, token }}
+              reasonRequired
+            />
             <CancelBooking reference={booking.reference} token={token} />
+            <p className="text-xs leading-relaxed text-muted">
+              You can move or cancel online up to {site.changeCutoffHours} hours before your appointment.
+            </p>
           </div>
         ) : null}
 
-        {!cancelled && !token ? (
+        {!cancelled && ownsLink && !canChange ? (
+          <div className="mt-10 rounded-sm border border-line bg-paper-raised p-5 text-sm leading-relaxed">
+            <p className="font-medium">
+              {booking.refund_locked
+                ? "This appointment was moved inside the 72-hour window, so the deposit is non-refundable."
+                : "It's too close to your appointment to cancel or change it online."}
+            </p>
+            <p className="mt-2 text-ink-soft">
+              If you need to move it, message {site.artist.split(" ")[0]} directly
+              {site.contact.instagram ? (
+                <>
+                  {" "}on Instagram{" "}
+                  <a className="underline" href={`https://instagram.com/${site.contact.instagram.replace("@", "")}`}>
+                    {site.contact.instagram}
+                  </a>
+                </>
+              ) : null}
+              {site.contact.phone ? (
+                <>
+                  {" "}or call{" "}
+                  <a className="underline" href={`tel:${site.contact.phone.replace(/\s/g, "")}`}>
+                    {site.contact.phone}
+                  </a>
+                </>
+              ) : null}
+              . If you don&apos;t attend, the {site.deposit.label} deposit isn&apos;t refunded.
+            </p>
+          </div>
+        ) : null}
+
+        {!cancelled && !ownsLink ? (
           <p className="mt-8 text-sm leading-relaxed text-muted">
             To cancel or change this appointment, use the link in your
             confirmation email

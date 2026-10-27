@@ -4,9 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { adminClient, supabaseConfigured } from "@/lib/supabase";
-import { getAvailability } from "@/lib/data";
+import { getAvailability, getBookingByReference, type Booking } from "@/lib/data";
+import { moveToSlot, refundIfPaid } from "@/lib/booking-changes";
+import { sendCancellationNotice } from "@/lib/email";
 import { site } from "@/lib/config";
-import { sendClientConfirmation, sendArtistNotification } from "@/lib/email";
+import { clientCanChange, holdExpiresAt } from "@/lib/policy";
+import { createDepositCheckout, stripeConfigured } from "@/lib/stripe";
 
 export type BookingState = {
   ok: boolean;
@@ -22,7 +25,7 @@ export async function createBooking(
   _prev: BookingState,
   formData: FormData,
 ): Promise<BookingState> {
-  if (!supabaseConfigured()) {
+  if (!supabaseConfigured() || !stripeConfigured()) {
     return { ok: false, error: "Bookings aren't switched on yet. Please get in touch directly." };
   }
 
@@ -37,6 +40,9 @@ export async function createBooking(
   const notes = String(formData.get("notes") ?? "").trim();
 
   if (!clientName) return { ok: false, error: "Please add your name." };
+  if (formData.get("acceptTerms") !== "yes") {
+    return { ok: false, error: "Please agree to the deposit terms to continue." };
+  }
   if (!EMAIL_PATTERN.test(clientEmail)) {
     return { ok: false, error: "That email address doesn't look right." };
   }
@@ -84,6 +90,16 @@ export async function createBooking(
   }
 
   const supabase = adminClient();
+  const now = new Date();
+  const expiresAt = holdExpiresAt(now);
+
+  // A hold whose 30 minutes are up still matches the overlap constraint until
+  // something flips it to 'expired'. Do that for this slot first, so an
+  // abandoned checkout never blocks the next client.
+  await supabase.rpc("release_stale_holds", {
+    range_start: slot.startsAt,
+    range_end: slot.endsAt,
+  });
 
   // The insert is the lock. `bookings_no_overlap` is an exclusion constraint
   // on the booking's time range, so if two people submit overlapping slots at
@@ -99,6 +115,9 @@ export async function createBooking(
       starts_at: slot.startsAt,
       ends_at: slot.endsAt,
       session_type: slot.session,
+      status: "pending_payment",
+      pending_expires_at: expiresAt.toISOString(),
+      terms_accepted_at: now.toISOString(),
       placement: placement || null,
       size_estimate: sizeEstimate || null,
       notes: notes || null,
@@ -119,9 +138,8 @@ export async function createBooking(
     return { ok: false, error: "Something went wrong saving your booking. Please try again." };
   }
 
-  // Images are secondary: the appointment is already real, so a failed upload
-  // is reported to the artist rather than thrown back at the client.
-  let uploaded = 0;
+  // Images are secondary: a failed upload is reported to the artist (via the
+  // image count in their email) rather than thrown back at the client.
   for (const [index, file] of files.entries()) {
     const extension = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
     const storagePath = `${booking.id}/${index + 1}.${extension}`;
@@ -135,81 +153,117 @@ export async function createBooking(
         booking_id: booking.id,
         storage_path: storagePath,
       });
-      uploaded += 1;
     }
   }
 
-  const emailPayload = {
-    reference: booking.reference as string,
-    cancelToken: booking.cancel_token as string,
-    clientName,
-    clientEmail,
-    clientPhone: clientPhone || null,
-    startsAt: booking.starts_at as string,
-    endsAt: booking.ends_at as string,
-    session: slot.session,
-    placement: placement || null,
-    sizeEstimate: sizeEstimate || null,
-    notes: notes || null,
-    imageCount: uploaded,
-  };
-
-  await Promise.allSettled([
-    sendClientConfirmation(emailPayload),
-    sendArtistNotification(emailPayload),
-  ]);
-
-  revalidatePath("/book");
-  revalidatePath("/admin");
-
-  redirect(`/booking/${booking.reference}?t=${booking.cancel_token}`);
-}
-
-/** Client-side cancellation. Requires both the reference and the token. */
-export async function cancelBooking(
-  _prev: { ok: boolean; error?: string },
-  formData: FormData,
-): Promise<{ ok: boolean; error?: string }> {
-  const reference = String(formData.get("reference") ?? "").trim().toUpperCase();
-  const token = String(formData.get("token") ?? "").trim();
-
-  if (!reference || !token) return { ok: false, error: "Missing booking details." };
-  if (!supabaseConfigured()) return { ok: false, error: "Not available right now." };
-
-  const supabase = adminClient();
-
-  // Matching on both columns means a guessed reference is not enough — the
-  // update simply affects no rows without the right token.
-  const { data, error } = await supabase
-    .from("bookings")
-    .update({
-      status: "cancelled",
-      cancelled_at: new Date().toISOString(),
-      cancelled_by: "client",
-    })
-    .eq("reference", reference)
-    .eq("cancel_token", token)
-    .eq("status", "confirmed")
-    .select("reference, client_name, client_email, starts_at, ends_at")
-    .maybeSingle();
-
-  if (error || !data) {
-    return { ok: false, error: "We couldn't cancel that booking. It may already have been cancelled." };
+  // The slot is held, not booked. Confirmation (and both emails) happen only
+  // when Stripe's webhook reports the deposit paid.
+  let checkoutUrl: string;
+  try {
+    const checkout = await createDepositCheckout({
+      bookingId: booking.id as string,
+      reference: booking.reference as string,
+      cancelToken: booking.cancel_token as string,
+      clientEmail,
+      startsAt: booking.starts_at as string,
+      endsAt: booking.ends_at as string,
+      sessionLabel: site.sessions[slot.session].label,
+      expiresAt,
+    });
+    await supabase
+      .from("bookings")
+      .update({ stripe_checkout_session_id: checkout.id })
+      .eq("id", booking.id);
+    checkoutUrl = checkout.url;
+  } catch (stripeError) {
+    console.error("Stripe checkout failed", stripeError);
+    await supabase.from("bookings").update({ status: "expired" }).eq("id", booking.id);
+    return { ok: false, error: "We couldn't start the payment. Please try again." };
   }
 
-  const { sendCancellationNotice } = await import("@/lib/email");
+  revalidatePath("/book");
+  redirect(checkoutUrl);
+}
+
+type ChangeState = { ok: boolean; error?: string; slotTaken?: boolean };
+
+/** Loads a booking by reference + token. Both must match; a guessed reference is not enough. */
+async function bookingForClient(reference: string, token: string): Promise<Booking | null> {
+  if (!reference || !token) return null;
+  const booking = await getBookingByReference(reference);
+  if (!booking || booking.cancel_token !== token) return null;
+  return booking;
+}
+
+const TOO_LATE = `It's too close to your appointment to change it online. Please message ${site.artist.split(" ")[0]} directly.`;
+
+/** Client-side cancellation: 72h+ out only, deposit refunded. */
+export async function cancelBooking(_prev: ChangeState, formData: FormData): Promise<ChangeState> {
+  const reference = String(formData.get("reference") ?? "").trim().toUpperCase();
+  const token = String(formData.get("token") ?? "").trim();
+  if (!supabaseConfigured()) return { ok: false, error: "Not available right now." };
+
+  const booking = await bookingForClient(reference, token);
+  if (!booking || booking.status !== "confirmed") {
+    return { ok: false, error: "We couldn't cancel that booking. It may already have been cancelled." };
+  }
+  // Re-checked here, not just hidden in the page: a page loaded at 72h01m and
+  // submitted at 71h59m must still be refused.
+  if (!clientCanChange(booking.starts_at, new Date(), booking.refund_locked)) {
+    return { ok: false, error: TOO_LATE };
+  }
+
+  const supabase = adminClient();
+  const { data } = await supabase
+    .from("bookings")
+    .update({ status: "cancelled", cancelled_at: new Date().toISOString(), cancelled_by: "client" })
+    .eq("id", booking.id)
+    .eq("status", "confirmed")
+    .select("id")
+    .maybeSingle();
+  if (!data) return { ok: false, error: "We couldn't cancel that booking. It may already have been cancelled." };
+
+  const refunded = await refundIfPaid(booking);
+
   await sendCancellationNotice({
-    reference: data.reference as string,
-    clientName: data.client_name as string,
-    clientEmail: data.client_email as string,
-    startsAt: data.starts_at as string,
-    endsAt: data.ends_at as string,
+    reference: booking.reference,
+    clientName: booking.client_name,
+    clientEmail: booking.client_email,
+    startsAt: booking.starts_at,
+    endsAt: booking.ends_at,
     cancelledBy: "client",
+    refunded,
   });
 
   revalidatePath("/book");
   revalidatePath("/admin");
   revalidatePath(`/booking/${reference}`);
+  return { ok: true };
+}
 
+/** Client-side move: 72h+ out only, reason required, deposit carries over. */
+export async function moveBooking(_prev: ChangeState, formData: FormData): Promise<ChangeState> {
+  const reference = String(formData.get("reference") ?? "").trim().toUpperCase();
+  const token = String(formData.get("token") ?? "").trim();
+  const startsAt = String(formData.get("startsAt") ?? "").trim();
+  const endsAt = String(formData.get("endsAt") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!supabaseConfigured()) return { ok: false, error: "Not available right now." };
+
+  const booking = await bookingForClient(reference, token);
+  if (!booking || booking.status !== "confirmed") {
+    return { ok: false, error: "We couldn't find that booking." };
+  }
+  if (!clientCanChange(booking.starts_at, new Date(), booking.refund_locked)) {
+    return { ok: false, error: TOO_LATE };
+  }
+  if (!reason) return { ok: false, error: `Please tell ${site.artist.split(" ")[0]} why you're moving it.` };
+
+  const result = await moveToSlot(booking, { startsAt, endsAt }, reason, "client");
+  if (!result.ok) return result;
+
+  revalidatePath("/book");
+  revalidatePath("/admin");
+  revalidatePath(`/booking/${reference}`);
   return { ok: true };
 }

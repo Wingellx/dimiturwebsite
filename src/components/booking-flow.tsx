@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 
 import { createBooking, type BookingState } from "@/app/actions/booking";
 import { downscaleImage } from "@/lib/image-resize";
-import { site } from "@/lib/config";
+import { site, TERMS_SENTENCE } from "@/lib/config";
 import type { DayAvailability, SessionType, Slot } from "@/lib/availability";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -146,12 +146,14 @@ export function BookingFlow({ availability }: { availability: DayAvailability[] 
           <DetailsFields />
           <ReferenceUpload files={files} onChange={setFiles} />
 
+          <DepositTerms session={selectedSlot.session} />
+
           <SubmitButton />
 
           <p className="text-xs leading-relaxed text-muted">
-            By booking you agree to give as much notice as possible if you need
-            to cancel. You&apos;ll get a confirmation email with a link to
-            manage the appointment.
+            You&apos;ll pay securely on Stripe (card, Apple Pay or Google Pay),
+            then come straight back here. Your slot is held for{" "}
+            {site.paymentHoldMinutes} minutes while you pay.
           </p>
         </form>
       ) : null}
@@ -667,6 +669,34 @@ function ReferenceUpload({
   );
 }
 
+function DepositTerms({ session }: { session: SessionType }) {
+  const price = site.sessions[session].price;
+  return (
+    <div className="rounded-sm border border-line bg-paper-raised p-4">
+      <p className="text-sm">
+        <span className="font-medium">{site.deposit.label} deposit today</span>{" "}
+        to secure your slot. It comes off your {price} price, and you pay the
+        rest on the day.
+      </p>
+      <label className="mt-4 flex items-start gap-3 text-sm leading-relaxed">
+        <input
+          type="checkbox"
+          name="acceptTerms"
+          value="yes"
+          required
+          className="mt-1 h-5 w-5 shrink-0 accent-ink"
+        />
+        <span>
+          {TERMS_SENTENCE}{" "}
+          <a href="/policy" target="_blank" className="underline underline-offset-4">
+            Full policy
+          </a>
+        </span>
+      </label>
+    </div>
+  );
+}
+
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -675,7 +705,7 @@ function SubmitButton() {
       disabled={pending}
       className="w-full rounded-sm bg-ink px-6 py-4 text-sm font-medium text-paper transition-opacity hover:opacity-85 disabled:opacity-50"
     >
-      {pending ? "Confirming…" : "Confirm booking"}
+      {pending ? "Taking you to payment…" : `Pay ${site.deposit.label} deposit`}
     </button>
   );
 }

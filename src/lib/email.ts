@@ -60,11 +60,12 @@ export async function sendClientConfirmation(
         <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">When</td><td style="padding:8px 0;font-weight:600">${when(booking.startsAt, booking.endsAt)}</td></tr>
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Session</td><td style="padding:8px 0">${site.sessions[booking.session].label} (${site.sessions[booking.session].price})</td></tr>
+          <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Deposit</td><td style="padding:8px 0">${site.deposit.label} paid, taken off your final price</td></tr>
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Reference</td><td style="padding:8px 0;font-family:ui-monospace,monospace">${booking.reference}</td></tr>
           ${booking.placement ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Placement</td><td style="padding:8px 0">${escapeHtml(booking.placement)}</td></tr>` : ""}
           ${booking.sizeEstimate ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Size</td><td style="padding:8px 0">${escapeHtml(booking.sizeEstimate)}</td></tr>` : ""}
         </table>
-        <p style="margin:0 0 24px;font-size:14px;color:#5a5550">Need to change or cancel? <a href="${manageUrl}" style="color:#1a1a1a">Manage your booking</a>. Please give as much notice as you can.</p>
+        <p style="margin:0 0 24px;font-size:14px;color:#5a5550">Need to move or cancel? <a href="${manageUrl}" style="color:#1a1a1a">Manage your booking</a>. You can cancel for a full refund, or move it, up to ${site.changeCutoffHours} hours before. After that, please message ${site.artist.split(" ")[0]} directly.</p>
       `),
     });
     return { ok: true };
@@ -115,6 +116,8 @@ export async function sendCancellationNotice(input: {
   startsAt: string;
   endsAt: string;
   cancelledBy: "client" | "artist";
+  /** null = no deposit was paid; false = refund failed and needs doing by hand. */
+  refunded: boolean | null;
 }): Promise<{ ok: boolean; error?: string }> {
   const resend = client();
   if (!resend) return { ok: false, error: "RESEND_API_KEY not set" };
@@ -131,7 +134,78 @@ export async function sendCancellationNotice(input: {
       html: shell(`
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">Appointment cancelled</h1>
         <p style="margin:0 0 20px">The appointment on <strong>${when(input.startsAt, input.endsAt)}</strong> (ref ${input.reference}) has been cancelled${input.cancelledBy === "artist" ? " by the studio" : ""}. That slot is now free for someone else.</p>
+        ${input.refunded === true ? `<p style="margin:0 0 20px">Your ${site.deposit.label} deposit has been refunded to your card. It usually shows within 5–10 working days.</p>` : ""}
+        ${input.refunded === false ? `<p style="margin:0 0 20px;color:#a33">The automatic deposit refund failed. Refund it by hand in Stripe.</p>` : ""}
         <p style="margin:0"><a href="${siteUrl()}/book" style="color:#1a1a1a">Book another time</a></p>
+      `),
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+}
+
+export async function sendMoveNotice(input: {
+  reference: string;
+  cancelToken: string;
+  clientName: string;
+  clientEmail: string;
+  oldStartsAt: string;
+  oldEndsAt: string;
+  newStartsAt: string;
+  newEndsAt: string;
+  reason: string | null;
+  movedBy: "client" | "artist";
+}): Promise<{ ok: boolean; error?: string }> {
+  const resend = client();
+  if (!resend) return { ok: false, error: "RESEND_API_KEY not set" };
+
+  const recipients = [input.clientEmail];
+  const artistEmail = process.env.ARTIST_NOTIFICATION_EMAIL;
+  if (artistEmail) recipients.push(artistEmail);
+  const manageUrl = `${siteUrl()}/booking/${input.reference}?t=${input.cancelToken}`;
+
+  try {
+    await resend.emails.send({
+      from: emailFrom,
+      to: recipients,
+      subject: `Appointment moved: ${when(input.newStartsAt, input.newEndsAt)}`,
+      html: shell(`
+        <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">Appointment moved</h1>
+        <p style="margin:0 0 20px">${escapeHtml(input.clientName)}'s appointment (ref ${input.reference}) has been moved${input.movedBy === "artist" ? " by the studio" : ""}.</p>
+        <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
+          <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Was</td><td style="padding:8px 0;text-decoration:line-through">${when(input.oldStartsAt, input.oldEndsAt)}</td></tr>
+          <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Now</td><td style="padding:8px 0;font-weight:600">${when(input.newStartsAt, input.newEndsAt)}</td></tr>
+          ${input.reason ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Reason</td><td style="padding:8px 0">${escapeHtml(input.reason)}</td></tr>` : ""}
+        </table>
+        <p style="margin:0;font-size:14px">The ${site.deposit.label} deposit carries over. <a href="${manageUrl}" style="color:#1a1a1a">Manage your booking</a></p>
+      `),
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+}
+
+/** The slot went before a late payment landed, so the deposit was refunded. */
+export async function sendLatePaymentRefund(input: {
+  clientName: string;
+  clientEmail: string;
+  startsAt: string;
+  endsAt: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const resend = client();
+  if (!resend) return { ok: false, error: "RESEND_API_KEY not set" };
+
+  try {
+    await resend.emails.send({
+      from: emailFrom,
+      to: input.clientEmail,
+      subject: "Your deposit has been refunded",
+      html: shell(`
+        <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">That slot has gone, sorry</h1>
+        <p style="margin:0 0 20px">Hi ${escapeHtml(input.clientName)}, your payment for ${when(input.startsAt, input.endsAt)} came through after the 30-minute hold ran out, and someone else had booked the slot in the meantime. Your ${site.deposit.label} deposit has been refunded in full.</p>
+        <p style="margin:0"><a href="${siteUrl()}/book" style="color:#1a1a1a">Choose another time</a></p>
       `),
     });
     return { ok: true };

@@ -96,9 +96,14 @@ export function SiteFooter() {
           <p>
             © {new Date().getFullYear()} {site.artist}
           </p>
-          <Link href="/book" className="hover:text-ink">
-            Book an appointment
-          </Link>
+          <span className="flex gap-4">
+            <Link href="/policy" className="hover:text-ink">
+              Booking & deposit policy
+            </Link>
+            <Link href="/book" className="hover:text-ink">
+              Book an appointment
+            </Link>
+          </span>
         </div>
       </div>
     </footer>

@@ -7,7 +7,9 @@ alter table public.bookings drop constraint if exists bookings_status_check;
 alter table public.bookings
   add constraint bookings_status_check
   check (status in ('pending_payment', 'confirmed', 'cancelled', 'completed', 'expired'));
-alter table public.bookings alter column status set default 'pending_payment';
+-- The default stays 'confirmed' on purpose: the booking action always sets
+-- 'pending_payment' explicitly, and a code version that predates deposits can
+-- keep inserting safely while the two are deployed out of step.
 
 alter table public.bookings
   add column if not exists pending_expires_at        timestamptz,
