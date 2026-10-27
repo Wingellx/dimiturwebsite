@@ -1,5 +1,5 @@
 /**
- * Everything Dimitur might want changed without touching a component.
+ * Everything Dimitar might want changed without touching a component.
  * Edit here, not in the pages.
  */
 
@@ -19,7 +19,7 @@ type SiteConfig = {
 };
 
 export const site: SiteConfig = {
-  artist: "Dimitur Penchev",
+  artist: "Dimitar Penchev",
   tagline: "Tattooist · Lincoln",
   /** Shown in the footer and on the confirmation email. */
   studio: {

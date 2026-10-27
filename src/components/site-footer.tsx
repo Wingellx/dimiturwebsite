@@ -3,7 +3,7 @@ import { site } from "@/lib/config";
 
 /**
  * Contact details are optional in config, so every block here is conditional —
- * the footer stays clean while Dimitur's studio address and handle are still
+ * the footer stays clean while Dimitar's studio address and handle are still
  * blank, rather than showing empty labels.
  */
 export function SiteFooter() {

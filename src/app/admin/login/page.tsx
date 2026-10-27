@@ -19,7 +19,7 @@ export default async function LoginPage() {
       <div className="mx-auto max-w-sm">
         <h1 className="font-display text-3xl leading-none">Studio sign in</h1>
         <p className="mt-3 text-sm text-muted">
-          For Dimitur only. Clients don&apos;t need this page.
+          For Dimitar only. Clients don&apos;t need this page.
         </p>
         <LoginForm />
       </div>

@@ -79,7 +79,7 @@ export async function getAvailability(): Promise<DayAvailability[]> {
  * Portfolio images.
  *
  * Falls back to whatever sits in /public/portfolio via the manifest, so the
- * site has real work on it the moment Dimitur's photos are dropped in a
+ * site has real work on it the moment Dimitar's photos are dropped in a
  * folder — no database round trip needed to get started.
  */
 export async function getPortfolio(): Promise<PortfolioItem[]> {
@@ -98,7 +98,7 @@ export async function getPortfolio(): Promise<PortfolioItem[]> {
         src: row.storage_path
           ? `${base}${row.storage_path}`
           : (row.static_src as string),
-        alt: (row.alt as string) || "Tattoo by Dimitur Penchev",
+        alt: (row.alt as string) || "Tattoo by Dimitar Penchev",
       }));
     }
   }

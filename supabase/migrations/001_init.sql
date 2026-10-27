@@ -1,4 +1,4 @@
--- Dimitur Penchev — tattoo booking schema.
+-- Dimitar Penchev — tattoo booking schema.
 -- Instant-confirm booking: a client picks a free slot and it is locked on submit.
 -- Everything is written through server actions using the service role, so the
 -- anon key never gets write access (see the RLS policies at the bottom).
@@ -159,7 +159,7 @@ with (security_invoker = off) as
 grant select on public.taken_slots to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- Seed: a sensible default week. Dimitur changes these in /admin once set up.
+-- Seed: a sensible default week. Dimitar changes these in /admin once set up.
 -- ---------------------------------------------------------------------------
 
 insert into public.availability_rules (day_of_week, start_time, end_time, slot_minutes)

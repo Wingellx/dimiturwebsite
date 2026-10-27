@@ -1,4 +1,4 @@
-# Dimitur Penchev — tattoo site
+# Dimitar Penchev — tattoo site
 
 Portfolio and instant-confirm booking. Next.js 16 (App Router) · Supabase · Tailwind 4.
 
@@ -14,7 +14,7 @@ Standalone project with its own git repository — nothing here is shared with a
 - Attach up to 6 reference images plus free-text notes (style, placement, cover-up, allergies)
 - Confirmation email with a reference code and a link to cancel
 
-**For Dimitur** — `/admin`, one password
+**For Dimitar** — `/admin`, one password
 - Every upcoming appointment with the client's contact details, notes and reference images
 - Cancel an appointment (the client is emailed automatically) or mark it done
 - Set weekly working hours and session length
@@ -53,7 +53,7 @@ The service role key bypasses row-level security. It is server-side only — nev
 ### 3. Admin password
 
 ```
-ADMIN_PASSWORD=whatever-dimitur-will-remember
+ADMIN_PASSWORD=whatever-dimitar-will-remember
 ADMIN_SESSION_SECRET=  # openssl rand -base64 48
 ```
 
@@ -64,7 +64,7 @@ Sign up at [resend.com](https://resend.com), verify a sending domain, then:
 ```
 RESEND_API_KEY=
 BOOKING_EMAIL_FROM=hello@yourdomain.com
-ARTIST_NOTIFICATION_EMAIL=dimitur@wherever.com
+ARTIST_NOTIFICATION_EMAIL=dimitar@wherever.com
 ```
 
 Without these, bookings still save correctly — nobody just gets emailed about them.
@@ -90,11 +90,11 @@ public/portfolio/
 Two things the filename controls:
 
 - **Order** — the numeric prefix. `01-` shows first.
-- **Alt text** — the rest of the name becomes the description read by screen readers and Google. `01-fine-line-snake-forearm.jpg` reads as *"Fine line snake forearm — tattoo by Dimitur Penchev"*. Worth naming them properly; it is free SEO.
+- **Alt text** — the rest of the name becomes the description read by screen readers and Google. `01-fine-line-snake-forearm.jpg` reads as *"Fine line snake forearm — tattoo by Dimitar Penchev"*. Worth naming them properly; it is free SEO.
 
 Resize anything enormous before adding it — these ship to every visitor. 2000px on the long edge is plenty.
 
-For a portfolio Dimitur can update himself later, the `portfolio_items` table and the public `portfolio` storage bucket already exist and take priority over this folder when populated.
+For a portfolio Dimitar can update himself later, the `portfolio_items` table and the public `portfolio` storage bucket already exist and take priority over this folder when populated.
 
 ---
 
@@ -116,7 +116,7 @@ For a portfolio Dimitur can update himself later, the `portfolio_items` table an
 
 ## Configuration
 
-Most of what Dimitur might want changed lives in `src/lib/config.ts`:
+Most of what Dimitar might want changed lives in `src/lib/config.ts`:
 
 | Setting | What it does |
 |---|---|
@@ -127,7 +127,7 @@ Most of what Dimitur might want changed lives in `src/lib/config.ts`:
 | `minimumNoticeHours` | Minimum notice (default 24) |
 | `uploads` | File count and size limits |
 
-Working hours and days off are **not** in here — they are managed in `/admin` so Dimitur can change them without a deploy.
+Working hours and days off are **not** in here — they are managed in `/admin` so Dimitar can change them without a deploy.
 
 ---
 

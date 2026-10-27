@@ -11,7 +11,7 @@ const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif"]);
 /**
  * Reads whatever is sitting in /public/portfolio.
  *
- * Deliberately filesystem-driven rather than a hand-maintained list: Dimitur's
+ * Deliberately filesystem-driven rather than a hand-maintained list: Dimitar's
  * photos get dropped into that one folder and they appear on the site. Files
  * are shown in filename order, so prefixing them (01-, 02-, ...) sets the
  * running order without anyone editing code.
@@ -47,6 +47,6 @@ function altFromFilename(name: string): string {
     .trim();
 
   return base.length > 0
-    ? `${base.charAt(0).toUpperCase()}${base.slice(1)} tattoo by Dimitur Penchev`
-    : "Tattoo by Dimitur Penchev";
+    ? `${base.charAt(0).toUpperCase()}${base.slice(1)} tattoo by Dimitar Penchev`
+    : "Tattoo by Dimitar Penchev";
 }

@@ -1,4 +1,4 @@
-Drop Dimitur's photos in this folder.
+Drop Dimitar's photos in this folder.
 
 They appear on the site automatically, in filename order.
 

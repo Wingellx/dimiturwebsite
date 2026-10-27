@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import { cookies } from "next/headers";
 
 /**
- * A single shared password for Dimitur's admin area.
+ * A single shared password for Dimitar's admin area.
  *
  * Deliberately not a full auth system: there is exactly one user, he is not
  * technical, and every extra account/reset/verify screen is another thing to

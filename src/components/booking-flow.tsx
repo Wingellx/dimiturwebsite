@@ -360,11 +360,7 @@ function DetailsFields() {
           name="placement"
           placeholder="e.g. inner forearm"
         />
-        <Field
-          label="Rough size"
-          name="sizeEstimate"
-          placeholder="e.g. 10cm"
-        />
+        <SizeField />
       </div>
 
       <div>
@@ -382,6 +378,51 @@ function DetailsFields() {
           className="mt-2 w-full resize-y rounded-sm border border-line-strong bg-paper-raised px-3.5 py-3 text-base outline-none focus:border-ink"
         />
       </div>
+    </div>
+  );
+}
+
+const SIZE_OPTIONS = ["Hand", "Patchwork", "Quarter sleeve", "Half sleeve"];
+
+/**
+ * A fixed list covers most requests; "Other" swaps in a free-text box. Only
+ * one control carries the `sizeEstimate` name at a time, so the booking action
+ * reads a single value either way.
+ */
+function SizeField() {
+  const [choice, setChoice] = useState("");
+  const other = choice === "other";
+
+  return (
+    <div>
+      <label htmlFor="sizeChoice" className="block text-sm font-medium">
+        Rough size
+      </label>
+      <select
+        id="sizeChoice"
+        name={other ? undefined : "sizeEstimate"}
+        value={choice}
+        onChange={(event) => setChoice(event.target.value)}
+        className="mt-2 h-12 w-full rounded-sm border border-line-strong bg-paper-raised px-3 text-base outline-none focus:border-ink"
+      >
+        <option value="">Choose a size</option>
+        {SIZE_OPTIONS.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+        <option value="other">Other</option>
+      </select>
+      {other ? (
+        <input
+          name="sizeEstimate"
+          required
+          autoFocus
+          aria-label="Describe the tattoo and its size"
+          placeholder="What is it, and how big?"
+          className="mt-2 h-12 w-full rounded-sm border border-line-strong bg-paper-raised px-3.5 text-base outline-none focus:border-ink"
+        />
+      ) : null}
     </div>
   );
 }
