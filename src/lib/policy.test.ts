@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { checkoutTimes, clientCanChange, depositState, holdExpiresAt, holdIsStale, paidOutcome, withinCutoff } from "./policy";
+import { checkoutTimes, clientCanChange, depositState, formatPence, refundAmount, holdExpiresAt, holdIsStale, paidOutcome, withinCutoff } from "./policy";
 
 const start = "2026-11-10T10:00:00.000Z";
 const at = (iso: string) => new Date(iso);
@@ -53,4 +53,17 @@ test("depositState", () => {
   expect(depositState({ ...base, deposit_paid_at: "x" })).toBe("paid");
   expect(depositState({ ...base, deposit_paid_at: "x", refunded_at: "y" })).toBe("refunded");
   expect(depositState({ ...base, deposit_paid_at: "x", status: "cancelled" })).toBe("refund_needed");
+});
+
+test("client refunds keep Stripe's fee back; others are in full", () => {
+  expect(refundAmount(5000, 95, "client")).toBe(4905);
+  expect(refundAmount(5000, 95, "artist")).toBe(5000);
+  expect(refundAmount(5000, 95, "late_payment")).toBe(5000);
+  // A fee that can't be read falls back to the UK card estimate (1.5% + 20p).
+  expect(refundAmount(5000, null, "client")).toBe(4905);
+});
+
+test("formatPence", () => {
+  expect(formatPence(4905)).toBe("£49.05");
+  expect(formatPence(95)).toBe("£0.95");
 });

@@ -71,7 +71,7 @@ export async function artistCancelBooking(formData: FormData): Promise<void> {
     .maybeSingle();
 
   if (data) {
-    const refunded = await refundIfPaid(booking);
+    const refunded = await refundIfPaid(booking, "artist");
     await sendCancellationNotice({
       reference: booking.reference,
       clientName: booking.client_name,

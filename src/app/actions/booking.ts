@@ -228,7 +228,7 @@ export async function cancelBooking(_prev: ChangeState, formData: FormData): Pro
     .maybeSingle();
   if (!data) return { ok: false, error: "We couldn't cancel that booking. It may already have been cancelled." };
 
-  const refunded = await refundIfPaid(booking);
+  const refunded = await refundIfPaid(booking, "client");
 
   await sendCancellationNotice({
     reference: booking.reference,

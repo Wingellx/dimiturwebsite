@@ -46,7 +46,7 @@ export function CancelBooking({
       <p className="text-sm font-medium">Cancel this appointment?</p>
       <p className="mt-1.5 text-sm leading-relaxed text-muted">
         {hasDeposit
-          ? "Your £50 deposit is refunded to your card (usually 5–10 working days). "
+          ? "Your £50 deposit is refunded to your card, minus the card processing fee (usually about £1). It takes 5–10 working days. "
           : ""}
         The slot goes back into the diary straight away. This can&apos;t be
         undone.

@@ -121,4 +121,4 @@ export function studioMapLinks(): {
 
 /** The deposit terms in one sentence: booking checkbox, Stripe page, policy page. */
 export const TERMS_SENTENCE =
-  "I understand the £50 deposit secures my slot and comes off the final price. It's refunded if I cancel at least 72 hours before my appointment, and kept if I cancel later or don't attend.";
+  "I understand the £50 deposit secures my slot and comes off the final price. If I cancel at least 72 hours before my appointment it's refunded minus the card processing fee (usually about £1); if I cancel later or don't attend, it's kept.";

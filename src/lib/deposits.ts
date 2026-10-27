@@ -97,7 +97,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
         return;
       }
       if (result.overlap && intentId) {
-        const refundId = await refundDeposit(booking.id, intentId);
+        const { id: refundId } = await refundDeposit(booking.id, intentId, "late_payment");
         const saved = await adminClient()
           .from("bookings")
           .update({

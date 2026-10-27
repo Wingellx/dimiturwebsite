@@ -3,6 +3,8 @@ import "server-only";
 import { Resend } from "resend";
 import { site, emailFrom, siteUrl } from "./config";
 import { studioDateLabel, studioTimeLabel } from "./availability";
+import { formatPence } from "./policy";
+import type { RefundOutcome } from "./booking-changes";
 
 type BookingEmailInput = {
   reference: string;
@@ -65,7 +67,7 @@ export async function sendClientConfirmation(
           ${booking.placement ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Placement</td><td style="padding:8px 0">${escapeHtml(booking.placement)}</td></tr>` : ""}
           ${booking.sizeEstimate ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Size</td><td style="padding:8px 0">${escapeHtml(booking.sizeEstimate)}</td></tr>` : ""}
         </table>
-        <p style="margin:0 0 24px;font-size:14px;color:#5a5550">Need to move or cancel? <a href="${manageUrl}" style="color:#1a1a1a">Manage your booking</a>. You can cancel for a full refund, or move it, up to ${site.changeCutoffHours} hours before. After that, please message ${site.artist.split(" ")[0]} directly.</p>
+        <p style="margin:0 0 24px;font-size:14px;color:#5a5550">Need to move or cancel? <a href="${manageUrl}" style="color:#1a1a1a">Manage your booking</a>. You can move it, or cancel for a refund of your deposit minus the card processing fee, up to ${site.changeCutoffHours} hours before. After that, please message ${site.artist.split(" ")[0]} directly.</p>
       `),
     });
     return { ok: true };
@@ -116,8 +118,7 @@ export async function sendCancellationNotice(input: {
   startsAt: string;
   endsAt: string;
   cancelledBy: "client" | "artist";
-  /** null = no deposit was paid; false = refund failed and needs doing by hand. */
-  refunded: boolean | null;
+  refunded: RefundOutcome;
 }): Promise<{ ok: boolean; error?: string }> {
   const resend = client();
   if (!resend) return { ok: false, error: "RESEND_API_KEY not set" };
@@ -134,12 +135,12 @@ export async function sendCancellationNotice(input: {
       html: shell(`
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">Appointment cancelled</h1>
         <p style="margin:0 0 20px">The appointment on <strong>${when(input.startsAt, input.endsAt)}</strong> (ref ${input.reference}) has been cancelled${input.cancelledBy === "artist" ? " by the studio" : ""}. That slot is now free for someone else.</p>
-        ${input.refunded === true ? `<p style="margin:0 0 20px">Your ${site.deposit.label} deposit has been refunded to your card. It usually shows within 5–10 working days.</p>` : ""}
-        ${input.refunded === false ? `<p style="margin:0 0 20px">Your ${site.deposit.label} deposit refund is being processed and will reach your card shortly.</p>` : ""}
+        ${input.refunded.status === "refunded" ? `<p style="margin:0 0 20px">${formatPence(input.refunded.amountPence)} has been refunded to your card${input.refunded.amountPence < site.deposit.amountPence ? ` (your ${site.deposit.label} deposit minus the ${formatPence(site.deposit.amountPence - input.refunded.amountPence)} card processing fee, which isn't refundable)` : ""}. It usually shows within 5–10 working days.</p>` : ""}
+        ${input.refunded.status === "failed" ? `<p style="margin:0 0 20px">Your deposit refund is being processed and will reach your card shortly.</p>` : ""}
         <p style="margin:0"><a href="${siteUrl()}/book" style="color:#1a1a1a">Book another time</a></p>
       `),
     });
-    if (input.refunded === false && artistEmail) {
+    if (input.refunded.status === "failed" && artistEmail) {
       // Operator instruction goes to Dim alone, never to the client.
       await resend.emails.send({
         from: emailFrom,

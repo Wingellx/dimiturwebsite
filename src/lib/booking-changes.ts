@@ -3,6 +3,7 @@ import "server-only";
 import { adminClient } from "./supabase";
 import { getAvailability, type Booking } from "./data";
 import { refundDeposit } from "./stripe";
+import type { RefundReason } from "./policy";
 import { sendMoveNotice } from "./email";
 
 /**
@@ -10,24 +11,28 @@ import { sendMoveNotice } from "./email";
  * the same slot checks, history and refund handling.
  */
 
+export type RefundOutcome =
+  | { status: "refunded"; amountPence: number }
+  | { status: "failed" }
+  | { status: "none" };
+
 /**
- * Refunds the deposit if one was paid and not already refunded.
- * Returns true (refunded), false (refund failed — Dim must do it in Stripe),
- * or null (no deposit to refund).
+ * Refunds the deposit if one was paid and not already refunded. A client
+ * cancelling gets it back minus Stripe's fee; Dim cancelling refunds in full.
  */
-export async function refundIfPaid(booking: Booking): Promise<boolean | null> {
-  if (!booking.deposit_paid_at || !booking.stripe_payment_intent_id) return null;
-  if (booking.stripe_refund_id) return true;
+export async function refundIfPaid(booking: Booking, reason: RefundReason): Promise<RefundOutcome> {
+  if (!booking.deposit_paid_at || !booking.stripe_payment_intent_id) return { status: "none" };
+  if (booking.stripe_refund_id) return { status: "none" };
   try {
-    const refundId = await refundDeposit(booking.id, booking.stripe_payment_intent_id);
+    const refund = await refundDeposit(booking.id, booking.stripe_payment_intent_id, reason);
     await adminClient()
       .from("bookings")
-      .update({ stripe_refund_id: refundId, refunded_at: new Date().toISOString() })
+      .update({ stripe_refund_id: refund.id, refunded_at: new Date().toISOString() })
       .eq("id", booking.id);
-    return true;
+    return { status: "refunded", amountPence: refund.amountPence };
   } catch (error) {
     console.error("Deposit refund failed", booking.reference, error);
-    return false;
+    return { status: "failed" };
   }
 }
 

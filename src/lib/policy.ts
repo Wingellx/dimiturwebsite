@@ -71,3 +71,22 @@ export function depositState(booking: {
   if (booking.refunded_at) return "refunded";
   return booking.status === "cancelled" ? "refund_needed" : "paid";
 }
+
+export type RefundReason = "client" | "artist" | "late_payment";
+
+/**
+ * How much of the deposit goes back. A client who cancels covers Stripe's
+ * processing fee (Stripe keeps it on a refund, so otherwise Dim pays it);
+ * Dim cancelling, or a late payment on a slot that had gone, refunds in full.
+ * `feePence` is the real fee Stripe charged on that payment; when it can't be
+ * read, the standard UK card rate (1.5% + 20p) stands in.
+ */
+export function refundAmount(depositPence: number, feePence: number | null, reason: RefundReason): number {
+  if (reason !== "client") return depositPence;
+  const fee = feePence ?? Math.round(depositPence * 0.015) + 20;
+  return Math.max(0, depositPence - fee);
+}
+
+export function formatPence(pence: number): string {
+  return `£${(pence / 100).toFixed(2)}`;
+}

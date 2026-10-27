@@ -4,6 +4,7 @@ import Stripe from "stripe";
 
 import { site, siteUrl, TERMS_SENTENCE } from "./config";
 import { studioDateLabel, studioTimeLabel } from "./availability";
+import { refundAmount, type RefundReason } from "./policy";
 
 /**
  * Deposits go through Stripe's hosted Checkout page, so card details never
@@ -69,16 +70,39 @@ export async function createDepositCheckout(input: {
   return { id: session.id, url: session.url };
 }
 
+/** The processing fee Stripe actually charged on a payment, in pence, or null if unreadable. */
+async function stripeFeePence(paymentIntentId: string): Promise<number | null> {
+  try {
+    const intent = await stripe().paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge.balance_transaction"],
+    });
+    const charge = intent.latest_charge;
+    if (!charge || typeof charge === "string") return null;
+    const txn = charge.balance_transaction;
+    if (!txn || typeof txn === "string") return null;
+    return txn.fee;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Refunds the deposit in full. The idempotency key means a retried request
- * (double tap, webhook redelivery) can never refund twice.
+ * Refunds the deposit — minus Stripe's fee when the client cancelled, in full
+ * otherwise. Returns the refund id and the amount refunded. The idempotency
+ * key means a retried request can never refund twice.
  */
-export async function refundDeposit(bookingId: string, paymentIntentId: string): Promise<string> {
+export async function refundDeposit(
+  bookingId: string,
+  paymentIntentId: string,
+  reason: RefundReason,
+): Promise<{ id: string; amountPence: number }> {
+  const fee = reason === "client" ? await stripeFeePence(paymentIntentId) : null;
+  const amount = refundAmount(site.deposit.amountPence, fee, reason);
   const refund = await stripe().refunds.create(
-    { payment_intent: paymentIntentId },
+    { payment_intent: paymentIntentId, amount },
     { idempotencyKey: `refund-${bookingId}` },
   );
-  return refund.id;
+  return { id: refund.id, amountPence: refund.amount };
 }
 
 /** True if the session is now unable to take payment (expired or already was). */

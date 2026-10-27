@@ -111,7 +111,7 @@ export default async function BookingPage({
         {cancelled ? (
           <p className="mt-4 text-base leading-relaxed text-ink-soft">
             This appointment has been cancelled and the slot released.
-            {booking.refunded_at ? ` Your ${site.deposit.label} deposit has been refunded.` : ""}
+            {booking.refunded_at ? " Your deposit has been refunded to your card." : ""}
           </p>
         ) : (
           <p className="mt-4 text-base leading-relaxed text-ink-soft">

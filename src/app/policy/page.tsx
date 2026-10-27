@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 const POINTS = [
   `A ${site.deposit.label} deposit secures your slot. It comes off your final price, and the rest is paid on the day.`,
-  `Cancel at least ${site.changeCutoffHours} hours before your appointment and your deposit is refunded in full.`,
+  `Cancel at least ${site.changeCutoffHours} hours before your appointment and your deposit is refunded, minus the card processing fee our payment provider charges (usually about £1). That fee isn't returned to us either.`,
   `You can move your appointment online, to any open slot, up to ${site.changeCutoffHours} hours before. The deposit carries over.`,
   `Less than ${site.changeCutoffHours} hours before, appointments can't be cancelled. To move one, message ${site.artist.split(" ")[0]} directly.`,
   "If you don't attend, the deposit isn't refunded.",
