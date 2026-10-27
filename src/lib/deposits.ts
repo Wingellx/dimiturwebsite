@@ -7,6 +7,7 @@ import { requireBookingById, type Booking } from "./data";
 import { paidOutcome } from "./policy";
 import { refundDeposit } from "./stripe";
 import { sendArtistNotification, sendClientConfirmation, sendLatePaymentRefund } from "./email";
+import { newBookingAlert, postToSlack } from "./slack";
 
 /**
  * Stripe webhook handlers. Only these confirm a booking: the success redirect
@@ -66,7 +67,11 @@ async function sendConfirmationEmails(booking: Booking): Promise<void> {
     notes: booking.notes,
     imageCount: count ?? 0,
   };
-  await Promise.allSettled([sendClientConfirmation(payload), sendArtistNotification(payload)]);
+  await Promise.allSettled([
+    sendClientConfirmation(payload),
+    sendArtistNotification(payload),
+    postToSlack(newBookingAlert(payload)),
+  ]);
 }
 
 export async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {

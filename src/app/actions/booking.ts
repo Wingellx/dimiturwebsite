@@ -7,6 +7,7 @@ import { adminClient, supabaseConfigured } from "@/lib/supabase";
 import { getAvailability, getBookingByReference, type Booking } from "@/lib/data";
 import { moveToSlot, refundIfPaid } from "@/lib/booking-changes";
 import { sendCancellationNotice } from "@/lib/email";
+import { cancellationAlert, postToSlack } from "@/lib/slack";
 import { site } from "@/lib/config";
 import { checkoutTimes, clientCanChange } from "@/lib/policy";
 import { createDepositCheckout, expireCheckout, stripeConfigured } from "@/lib/stripe";
@@ -239,6 +240,15 @@ export async function cancelBooking(_prev: ChangeState, formData: FormData): Pro
     cancelledBy: "client",
     refunded,
   });
+  await postToSlack(
+    cancellationAlert({
+      clientName: booking.client_name,
+      startsAt: booking.starts_at,
+      endsAt: booking.ends_at,
+      cancelledBy: "client",
+      refund: refunded.status,
+    }),
+  );
 
   revalidatePath("/book");
   revalidatePath("/admin");

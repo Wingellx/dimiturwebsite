@@ -11,6 +11,7 @@ import {
 } from "@/lib/admin-auth";
 import { adminClient } from "@/lib/supabase";
 import { sendCancellationNotice } from "@/lib/email";
+import { cancellationAlert, postToSlack } from "@/lib/slack";
 import { getBookingById, getRota } from "@/lib/data";
 import { moveToSlot, refundIfPaid } from "@/lib/booking-changes";
 import { withinCutoff } from "@/lib/policy";
@@ -84,6 +85,15 @@ export async function artistCancelBooking(formData: FormData): Promise<void> {
       refunded,
       note,
     });
+    await postToSlack(
+      cancellationAlert({
+        clientName: booking.client_name,
+        startsAt: booking.starts_at,
+        endsAt: booking.ends_at,
+        cancelledBy: "artist",
+        refund: refunded.status,
+      }),
+    );
   }
 
   revalidatePath("/admin");

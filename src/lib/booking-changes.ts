@@ -5,6 +5,7 @@ import { getAvailability, type Booking } from "./data";
 import { refundDeposit } from "./stripe";
 import type { RefundReason } from "./policy";
 import { sendMoveNotice } from "./email";
+import { moveAlert, postToSlack } from "./slack";
 
 /**
  * Shared by the client actions and Dim's admin actions, so both paths apply
@@ -96,6 +97,17 @@ export async function moveToSlot(
     reason,
     movedBy,
   });
+  await postToSlack(
+    moveAlert({
+      clientName: booking.client_name,
+      oldStartsAt: booking.starts_at,
+      oldEndsAt: booking.ends_at,
+      newStartsAt: slot.startsAt,
+      newEndsAt: slot.endsAt,
+      reason,
+      movedBy,
+    }),
+  );
 
   return { ok: true };
 }
