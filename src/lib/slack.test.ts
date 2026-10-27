@@ -15,6 +15,7 @@ test("new booking alert carries the essentials and escapes client text", () => {
     sizeEstimate: "Quarter sleeve",
     notes: "Rose & dagger",
     imageCount: 2,
+    depositPaid: true,
   });
   expect(text).toContain("New booking");
   expect(text).toContain("Sam &lt;script&gt;");

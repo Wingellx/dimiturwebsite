@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { site, TERMS_SENTENCE } from "@/lib/config";
+import { instagramUrl, site, TERMS_SENTENCE } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: "Booking & deposit policy",
@@ -31,6 +31,15 @@ export default function PolicyPage() {
             </li>
           ))}
         </ul>
+        {instagramUrl() ? (
+          <p className="mt-8 text-sm text-muted">
+            Questions about a booking?{" "}
+            <a href={instagramUrl() ?? ""} target="_blank" rel="noreferrer noopener" className="text-ink underline underline-offset-4">
+              Message {site.artist.split(" ")[0]} on Instagram
+            </a>
+            .
+          </p>
+        ) : null}
         <Link href="/book" className="mt-10 inline-block rounded-sm bg-ink px-6 py-3 text-sm font-medium text-paper">
           Book an appointment
         </Link>

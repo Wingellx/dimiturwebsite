@@ -59,6 +59,16 @@ export function checkoutTimes(now: Date): { stripeExpiresAt: Date; holdUntil: Da
   return { stripeExpiresAt, holdUntil: stripeExpiresAt };
 }
 
+/**
+ * Deposit links Dim sends by hand (a custom booking agreed over Instagram)
+ * stay open for 23 hours — Stripe's Checkout maximum is 24 — so the client
+ * has time to pay, and the slot is held for the same window.
+ */
+export function manualCheckoutTimes(now: Date): { stripeExpiresAt: Date; holdUntil: Date } {
+  const stripeExpiresAt = new Date(now.getTime() + 23 * 60 * MINUTE);
+  return { stripeExpiresAt, holdUntil: stripeExpiresAt };
+}
+
 export type DepositState = "none" | "paid" | "refunded" | "refund_needed";
 
 /** What the admin card says about the money, including a refund that failed. */

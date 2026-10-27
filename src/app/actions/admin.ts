@@ -10,11 +10,14 @@ import {
   isAuthenticated,
 } from "@/lib/admin-auth";
 import { adminClient } from "@/lib/supabase";
-import { sendCancellationNotice } from "@/lib/email";
+import { sendCancellationNotice, sendDepositRequest } from "@/lib/email";
 import { cancellationAlert, postToSlack } from "@/lib/slack";
 import { getBookingById, getRota } from "@/lib/data";
 import { moveToSlot, refundIfPaid } from "@/lib/booking-changes";
-import { withinCutoff } from "@/lib/policy";
+import { manualCheckoutTimes, withinCutoff } from "@/lib/policy";
+import { studioInstant } from "@/lib/availability";
+import { createDepositCheckout } from "@/lib/stripe";
+import { announceConfirmed } from "@/lib/deposits";
 import { planForDate, type DayOverride } from "@/lib/availability";
 
 /** Every mutation below goes through this first. */
@@ -230,4 +233,109 @@ export async function saveRota(formData: FormData): Promise<void> {
     });
 
   revalidateAvailability();
+}
+
+export type ManualBookingState = { ok: boolean; error?: string; payUrl?: string; reference?: string };
+
+/**
+ * Dim adds a booking himself — anything that isn't a standard half or full
+ * day, usually agreed over Instagram. It can sit outside the rota (his call)
+ * but never on top of another booking: the overlap constraint still applies.
+ */
+export async function createManualBooking(
+  _prev: ManualBookingState,
+  formData: FormData,
+): Promise<ManualBookingState> {
+  await requireAdmin();
+
+  const date = String(formData.get("date") ?? "");
+  const startTime = String(formData.get("startTime") ?? "").slice(0, 5);
+  const endTime = String(formData.get("endTime") ?? "").slice(0, 5);
+  const clientName = String(formData.get("clientName") ?? "").trim();
+  const clientEmail = String(formData.get("clientEmail") ?? "").trim();
+  const clientPhone = String(formData.get("clientPhone") ?? "").trim() || null;
+  const placement = String(formData.get("placement") ?? "").trim() || null;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+  const priceLabel = String(formData.get("priceLabel") ?? "").trim().slice(0, 40) || null;
+  const deposit = formData.get("deposit") === "link";
+
+  if (!DATE_PATTERN.test(date)) return { ok: false, error: "Pick a date." };
+  if (!TIME_PATTERN.test(startTime) || !TIME_PATTERN.test(endTime) || endTime <= startTime) {
+    return { ok: false, error: "The end time needs to be after the start time." };
+  }
+  if (!clientName) return { ok: false, error: "Add the client's name." };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+    return { ok: false, error: "Add the client's email, so they get their confirmation." };
+  }
+
+  const startsAt = studioInstant(date, { hours: Number(startTime.slice(0, 2)), minutes: Number(startTime.slice(3)) });
+  const endsAt = studioInstant(date, { hours: Number(endTime.slice(0, 2)), minutes: Number(endTime.slice(3)) });
+  if (startsAt.getTime() <= Date.now()) return { ok: false, error: "That time has already passed." };
+
+  const supabase = adminClient();
+  const now = new Date();
+  const times = manualCheckoutTimes(now);
+  await supabase.rpc("release_stale_holds", { range_start: startsAt.toISOString(), range_end: endsAt.toISOString() });
+
+  const { data: booking, error } = await supabase
+    .from("bookings")
+    .insert({
+      client_name: clientName,
+      client_email: clientEmail,
+      client_phone: clientPhone,
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      session_type: "custom",
+      price_label: priceLabel,
+      placement,
+      notes,
+      status: deposit ? "pending_payment" : "confirmed",
+      pending_expires_at: deposit ? times.holdUntil.toISOString() : null,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (error.code === "23P01") return { ok: false, error: "That overlaps another booking. Pick a different time." };
+    return { ok: false, error: "Couldn't save that booking. Please try again." };
+  }
+
+  const saved = await getBookingById(booking.id as string);
+  if (!saved) return { ok: false, error: "Saved, but couldn't reload it. Refresh the page." };
+
+  if (!deposit) {
+    await announceConfirmed(saved, { depositPaid: false });
+    revalidatePath("/admin");
+    revalidatePath("/book");
+    return { ok: true, reference: saved.reference };
+  }
+
+  try {
+    const checkout = await createDepositCheckout({
+      bookingId: saved.id,
+      reference: saved.reference,
+      cancelToken: saved.cancel_token,
+      clientEmail,
+      startsAt: saved.starts_at,
+      endsAt: saved.ends_at,
+      sessionLabel: "Custom session",
+      expiresAt: times.stripeExpiresAt,
+    });
+    await supabase.from("bookings").update({ stripe_checkout_session_id: checkout.id }).eq("id", saved.id);
+    await sendDepositRequest({
+      clientName,
+      clientEmail,
+      startsAt: saved.starts_at,
+      endsAt: saved.ends_at,
+      payUrl: checkout.url,
+      priceLabel,
+    });
+    revalidatePath("/admin");
+    revalidatePath("/book");
+    return { ok: true, payUrl: checkout.url, reference: saved.reference };
+  } catch (stripeError) {
+    console.error("Manual deposit checkout failed", stripeError);
+    await supabase.from("bookings").update({ status: "expired" }).eq("id", saved.id);
+    return { ok: false, error: "Couldn't create the payment link. Please try again." };
+  }
 }

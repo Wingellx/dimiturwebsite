@@ -24,10 +24,11 @@ import {
   type DayOverride,
   type RotaSettings,
 } from "@/lib/availability";
-import { site } from "@/lib/config";
+import { sessionText, site } from "@/lib/config";
 import { depositState } from "@/lib/policy";
 import { logout, artistCancelBooking, artistMoveBooking, markCompleted } from "@/app/actions/admin";
 import { AdminCalendar, type DayTile } from "@/components/admin-calendar";
+import { ManualBookingForm } from "@/components/manual-booking-form";
 
 export const metadata: Metadata = {
   title: "Studio admin",
@@ -141,6 +142,9 @@ export default async function AdminPage() {
 
       <section className="mb-16">
         <h2 className="mb-5 font-display text-2xl">Upcoming</h2>
+        <div className="mb-5">
+          <ManualBookingForm />
+        </div>
 
         {upcoming.length === 0 ? (
           <p className="rounded-sm border border-dashed border-line-strong px-5 py-10 text-center text-sm text-muted">
@@ -227,7 +231,7 @@ function BookingCard({
             {studioTimeLabel(booking.starts_at)}–{studioTimeLabel(booking.ends_at)}
           </p>
           <p className="mt-0.5 text-xs tracking-[0.08em] text-muted uppercase">
-            {site.sessions[booking.session_type].label} · {site.sessions[booking.session_type].price}
+            {sessionText(booking.session_type, booking.price_label)}
             {" · "}
             {
               {

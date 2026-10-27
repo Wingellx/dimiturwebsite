@@ -14,7 +14,7 @@ export type DayTile = {
   bookings: {
     reference: string;
     client_name: string;
-    session_type: SessionType;
+    session_type: SessionType | "custom";
     /** "Morning", "Afternoon" or "Full day", worked out on the server. */
     part: string;
     time: string;
@@ -97,7 +97,7 @@ function DayButton({
   const bookedWhileClosed = !plan.open && bookings.length > 0;
   const openedByDim = plan.source === "override" && plan.open && !tile.rotaOpen;
   const customHours = plan.open && !plan.halves;
-  const full = bookings.some((b) => b.session_type === "full");
+  const full = bookings.some((b) => b.session_type === "full" || b.session_type === "custom");
   const morning = bookings.some((b) => b.part === "Morning");
   const afternoon = bookings.some((b) => b.part === "Afternoon");
 

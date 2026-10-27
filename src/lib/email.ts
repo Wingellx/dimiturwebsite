@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Resend } from "resend";
-import { site, emailFrom, siteUrl } from "./config";
+import { site, emailFrom, siteUrl, sessionText, TERMS_SENTENCE, type BookingSession } from "./config";
 import { studioDateLabel, studioTimeLabel } from "./availability";
 import { formatPence } from "./policy";
 import type { RefundOutcome } from "./booking-changes";
@@ -14,7 +14,9 @@ type BookingEmailInput = {
   clientPhone?: string | null;
   startsAt: string;
   endsAt: string;
-  session: "half" | "full";
+  session: BookingSession;
+  priceLabel?: string | null;
+  depositPaid: boolean;
   placement?: string | null;
   sizeEstimate?: string | null;
   notes?: string | null;
@@ -61,12 +63,13 @@ export async function sendClientConfirmation(
         <p style="margin:0 0 20px">Hi ${escapeHtml(booking.clientName)}, your appointment with ${site.artist} is confirmed.</p>
         <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">When</td><td style="padding:8px 0;font-weight:600">${when(booking.startsAt, booking.endsAt)}</td></tr>
-          <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Session</td><td style="padding:8px 0">${site.sessions[booking.session].label} (${site.sessions[booking.session].price})</td></tr>
-          <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Deposit</td><td style="padding:8px 0">${site.deposit.label} paid, taken off your final price</td></tr>
+          <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Session</td><td style="padding:8px 0">${sessionText(booking.session, booking.priceLabel)}</td></tr>
+          ${booking.depositPaid ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Deposit</td><td style="padding:8px 0">${site.deposit.label} paid, taken off your final price</td></tr>` : ""}
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Reference</td><td style="padding:8px 0;font-family:ui-monospace,monospace">${booking.reference}</td></tr>
           ${booking.placement ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Placement</td><td style="padding:8px 0">${escapeHtml(booking.placement)}</td></tr>` : ""}
           ${booking.sizeEstimate ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Size</td><td style="padding:8px 0">${escapeHtml(booking.sizeEstimate)}</td></tr>` : ""}
         </table>
+        <p style="margin:0 0 20px"><a href="${siteUrl()}/before-your-tattoo" style="display:inline-block;background:#14110f;color:#faf8f5;padding:12px 20px;border-radius:4px;text-decoration:none">Before your tattoo: how to prepare</a></p>
         <p style="margin:0 0 24px;font-size:14px;color:#5a5550">Need to move or cancel? <a href="${manageUrl}" style="color:#1a1a1a">Manage your booking</a>. You can move it, or cancel for a refund of your deposit minus the card processing fee, up to ${site.changeCutoffHours} hours before. After that, please message ${site.artist.split(" ")[0]} directly.</p>
       `),
     });
@@ -93,7 +96,7 @@ export async function sendArtistNotification(
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">New booking</h1>
         <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">When</td><td style="padding:8px 0;font-weight:600">${when(booking.startsAt, booking.endsAt)}</td></tr>
-          <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Session</td><td style="padding:8px 0">${site.sessions[booking.session].label} (${site.sessions[booking.session].price})</td></tr>
+          <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Session</td><td style="padding:8px 0">${sessionText(booking.session, booking.priceLabel)}</td></tr>
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Name</td><td style="padding:8px 0">${escapeHtml(booking.clientName)}</td></tr>
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Email</td><td style="padding:8px 0">${escapeHtml(booking.clientEmail)}</td></tr>
           ${booking.clientPhone ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Phone</td><td style="padding:8px 0">${escapeHtml(booking.clientPhone)}</td></tr>` : ""}
@@ -222,6 +225,35 @@ export async function sendLatePaymentRefund(input: {
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">That slot has gone, sorry</h1>
         <p style="margin:0 0 20px">Hi ${escapeHtml(input.clientName)}, your payment for ${when(input.startsAt, input.endsAt)} came through after the 30-minute hold ran out, and someone else had booked the slot in the meantime. Your ${site.deposit.label} deposit has been refunded in full.</p>
         <p style="margin:0"><a href="${siteUrl()}/book" style="color:#1a1a1a">Choose another time</a></p>
+      `),
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+}
+
+/** A custom booking Dim made by hand: here's the link to pay the deposit. */
+export async function sendDepositRequest(input: {
+  clientName: string;
+  clientEmail: string;
+  startsAt: string;
+  endsAt: string;
+  payUrl: string;
+  priceLabel: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const resend = client();
+  if (!resend) return { ok: false, error: "RESEND_API_KEY not set" };
+  try {
+    await resend.emails.send({
+      from: emailFrom,
+      to: input.clientEmail,
+      subject: `Secure your appointment: ${when(input.startsAt, input.endsAt)}`,
+      html: shell(`
+        <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">Your appointment is held for you</h1>
+        <p style="margin:0 0 20px">Hi ${escapeHtml(input.clientName)}, ${site.artist} has set aside <strong>${when(input.startsAt, input.endsAt)}</strong> for you${input.priceLabel ? ` (${escapeHtml(input.priceLabel)})` : ""}. Pay the ${site.deposit.label} deposit within 23 hours to confirm it. It comes off your final price.</p>
+        <p style="margin:0 0 24px"><a href="${input.payUrl}" style="display:inline-block;background:#14110f;color:#faf8f5;padding:12px 20px;border-radius:4px;text-decoration:none">Pay ${site.deposit.label} deposit</a></p>
+        <p style="margin:0;font-size:14px;color:#5a5550">${TERMS_SENTENCE}</p>
       `),
     });
     return { ok: true };

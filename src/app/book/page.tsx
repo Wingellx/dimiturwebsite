@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { getAvailability } from "@/lib/data";
 import { BookingFlow } from "@/components/booking-flow";
+import { instagramUrl, site } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: "Book an appointment",
@@ -30,6 +31,15 @@ export default async function BookPage() {
         </header>
 
         <BookingFlow availability={availability} />
+        {instagramUrl() ? (
+          <p className="mt-12 border-t border-line pt-6 text-sm text-muted">
+            Need something shorter than a half day, or have a question first?{" "}
+            <a href={instagramUrl() ?? ""} target="_blank" rel="noreferrer noopener" className="text-ink underline underline-offset-4">
+              Message {site.artist.split(" ")[0]} on Instagram
+            </a>
+            .
+          </p>
+        ) : null}
       </div>
     </div>
   );

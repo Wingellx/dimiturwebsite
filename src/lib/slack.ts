@@ -1,6 +1,6 @@
 import "server-only";
 
-import { site, siteUrl } from "./config";
+import { site, siteUrl, sessionText, type BookingSession } from "./config";
 import { studioDateLabel, studioTimeLabel } from "./availability";
 
 /**
@@ -37,7 +37,9 @@ export function newBookingAlert(input: {
   clientPhone: string | null;
   startsAt: string;
   endsAt: string;
-  session: "half" | "full";
+  session: BookingSession;
+  priceLabel?: string | null;
+  depositPaid: boolean;
   placement: string | null;
   sizeEstimate: string | null;
   notes: string | null;
@@ -45,7 +47,7 @@ export function newBookingAlert(input: {
 }): string {
   const lines = [
     `:calendar: *New booking* — ${clean(input.clientName)}`,
-    `*${when(input.startsAt, input.endsAt)}* · ${site.sessions[input.session].label} (${site.sessions[input.session].price}) · ${site.deposit.label} deposit paid`,
+    `*${when(input.startsAt, input.endsAt)}* · ${sessionText(input.session, input.priceLabel)} · ${input.depositPaid ? `${site.deposit.label} deposit paid` : "no deposit (added by you)"}`,
     input.placement || input.sizeEstimate
       ? `${[input.placement, input.sizeEstimate].filter(Boolean).map((v) => clean(v as string)).join(" · ")}`
       : null,

@@ -9,7 +9,7 @@ import { openCheckoutUrl } from "@/lib/stripe";
 import { MoveBooking } from "@/components/move-booking";
 import { PaymentPending } from "@/components/payment-pending";
 import { studioDateLabel, studioTimeLabel } from "@/lib/availability";
-import { site } from "@/lib/config";
+import { sessionSummary, site } from "@/lib/config";
 import { CancelBooking } from "@/components/cancel-booking";
 
 export const metadata: Metadata = {
@@ -130,6 +130,21 @@ export default async function BookingPage({
           </div>
         ) : null}
 
+        {!cancelled ? (
+          <Link
+            href="/before-your-tattoo"
+            className="mt-8 flex items-center justify-between gap-4 rounded-sm bg-ink px-5 py-4 text-paper"
+          >
+            <span>
+              <span className="block font-medium">Before your tattoo</span>
+              <span className="block text-sm text-paper/70">
+                Eating, water, sleep and what to bring. Two-minute read.
+              </span>
+            </span>
+            <span aria-hidden>→</span>
+          </Link>
+        ) : null}
+
         <dl className="mt-9 divide-y divide-line border-y border-line">
           <Row label="When">
             {studioDateLabel(booking.starts_at)}
@@ -139,10 +154,12 @@ export default async function BookingPage({
             </span>
           </Row>
           <Row label="Session">
-            {site.sessions[booking.session_type].label}{" "}
-            <span className="text-ink-soft">
-              ({site.sessions[booking.session_type].price}, paid on the day)
-            </span>
+            {sessionSummary(booking.session_type, booking.price_label).label}{" "}
+            {sessionSummary(booking.session_type, booking.price_label).price ? (
+              <span className="text-ink-soft">
+                ({sessionSummary(booking.session_type, booking.price_label).price}, paid on the day)
+              </span>
+            ) : null}
           </Row>
           {booking.deposit_paid_at ? (
             <Row label="Deposit">

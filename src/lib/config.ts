@@ -47,7 +47,7 @@ export const site: SiteConfig = {
   contact: {
     email: "",
     phone: "",
-    instagram: "",
+    instagram: "@dim_penchev",
   },
   sessions: {
     half: { label: "Half day", price: "£150", length: "4 hours" },
@@ -122,3 +122,25 @@ export function studioMapLinks(): {
 /** The deposit terms in one sentence: booking checkbox, Stripe page, policy page. */
 export const TERMS_SENTENCE =
   "I understand the £50 deposit secures my slot and comes off the final price. If I cancel at least 72 hours before my appointment it's refunded minus the card processing fee (usually about £1); if I cancel later or don't attend, it's kept.";
+
+export type BookingSession = "half" | "full" | "custom";
+
+/** Label and price for any booking, including Dim's hand-made custom ones. */
+export function sessionSummary(
+  type: BookingSession,
+  priceLabel?: string | null,
+): { label: string; price: string } {
+  if (type === "custom") return { label: "Custom session", price: priceLabel?.trim() || "" };
+  return { label: site.sessions[type].label, price: site.sessions[type].price };
+}
+
+/** "Custom session (£80)", "Half day (£150)" or just the label when no price. */
+export function sessionText(type: BookingSession, priceLabel?: string | null): string {
+  const { label, price } = sessionSummary(type, priceLabel);
+  return price ? `${label} (${price})` : label;
+}
+
+export function instagramUrl(): string | null {
+  const handle = site.contact.instagram.replace("@", "").trim();
+  return handle ? `https://www.instagram.com/${handle}/` : null;
+}

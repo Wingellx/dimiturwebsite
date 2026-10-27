@@ -2,6 +2,7 @@ import "server-only";
 
 import { publicClient, adminClient, supabaseConfigured } from "./supabase";
 import type { BookingStatus } from "./policy";
+import type { BookingSession } from "./config";
 import {
   buildAvailability,
   bookingHorizon,
@@ -9,7 +10,6 @@ import {
   type DayAvailability,
   type DayOverride,
   type RotaSettings,
-  type SessionType,
   type TakenSlot,
 } from "./availability";
 
@@ -30,7 +30,8 @@ export type Booking = {
   placement: string | null;
   size_estimate: string | null;
   notes: string | null;
-  session_type: SessionType;
+  session_type: BookingSession;
+  price_label: string | null;
   status: BookingStatus;
   created_at: string;
   cancel_token: string;
@@ -56,7 +57,7 @@ export type BookingMove = {
 };
 
 const BOOKING_COLUMNS =
-  "id, reference, client_name, client_email, client_phone, starts_at, ends_at, placement, size_estimate, notes, session_type, status, created_at, cancel_token, pending_expires_at, stripe_checkout_session_id, stripe_payment_intent_id, deposit_paid_at, stripe_refund_id, refunded_at, refund_locked, cancellation_note";
+  "id, reference, client_name, client_email, client_phone, starts_at, ends_at, placement, size_estimate, notes, session_type, status, created_at, cancel_token, pending_expires_at, stripe_checkout_session_id, stripe_payment_intent_id, deposit_paid_at, stripe_refund_id, refunded_at, refund_locked, cancellation_note, price_label";
 
 /**
  * Availability for the whole bookable window.

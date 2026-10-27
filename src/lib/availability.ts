@@ -231,8 +231,12 @@ function candidateSlots(plan: DayPlan): Candidate[] {
  * booking's own start time. Deliberately not from the day's current hours:
  * Dim can change or close a day after it's booked, and the label must not flip.
  */
-export function partOfDay(startsAt: string, session: SessionType): "Morning" | "Afternoon" | "Full day" {
+export function partOfDay(
+  startsAt: string,
+  session: SessionType | "custom",
+): "Morning" | "Afternoon" | "Full day" | "Custom" {
   if (session === "full") return "Full day";
+  if (session === "custom") return "Custom";
   return minutesOf(studioTimeLabel(startsAt)) < 13 * 60 ? "Morning" : "Afternoon";
 }
 

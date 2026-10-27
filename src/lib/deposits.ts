@@ -47,7 +47,8 @@ async function confirmFrom(
   return { confirmed: Boolean(data), overlap: false };
 }
 
-async function sendConfirmationEmails(booking: Booking): Promise<void> {
+/** Confirmation emails + Slack alert for a booking that just became real. */
+export async function announceConfirmed(booking: Booking, { depositPaid }: { depositPaid: boolean }): Promise<void> {
   const { count } = await adminClient()
     .from("booking_images")
     .select("id", { count: "exact", head: true })
@@ -62,6 +63,8 @@ async function sendConfirmationEmails(booking: Booking): Promise<void> {
     startsAt: booking.starts_at,
     endsAt: booking.ends_at,
     session: booking.session_type,
+    priceLabel: booking.price_label,
+    depositPaid,
     placement: booking.placement,
     sizeEstimate: booking.size_estimate,
     notes: booking.notes,
@@ -85,7 +88,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
   switch (paidOutcome(booking.status, { refunded: Boolean(booking.stripe_refund_id) })) {
     case "confirm": {
       const result = await confirmFrom(booking, "pending_payment", intentId);
-      if (result.confirmed) await sendConfirmationEmails(booking);
+      if (result.confirmed) await announceConfirmed(booking, { depositPaid: true });
       return;
     }
     case "try_reclaim": {
@@ -98,7 +101,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       if (released.error) throw released.error;
       const result = await confirmFrom(booking, "expired", intentId);
       if (result.confirmed) {
-        await sendConfirmationEmails(booking);
+        await announceConfirmed(booking, { depositPaid: true });
         return;
       }
       if (result.overlap && intentId) {
