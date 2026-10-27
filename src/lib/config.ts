@@ -6,7 +6,14 @@
 type SiteConfig = {
   artist: string;
   tagline: string;
-  studio: { name: string; addressLines: string[]; city: string };
+  studio: {
+    name: string;
+    addressLines: string[];
+    city: string;
+    postcode: string;
+    /** How to find the door once you're there. */
+    directions: string;
+  };
   contact: { email: string; phone: string; instagram: string };
   timezone: string;
   bookingWindowDays: number;
@@ -24,8 +31,10 @@ export const site: SiteConfig = {
   /** Shown in the footer and on the confirmation email. */
   studio: {
     name: "",
-    addressLines: [],
+    addressLines: ["2 Fulbeck House", "Turner Avenue"],
     city: "Lincoln",
+    postcode: "LN6 7NQ",
+    directions: "Inside the hair & beauty salon",
   },
   contact: {
     email: "",
@@ -67,4 +76,30 @@ export function siteUrl(): string {
   const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
   if (vercel) return `https://${vercel}`;
   return "http://localhost:3000";
+}
+
+/** The studio address as one line, for map searches and directions links. */
+export function studioAddressLine(): string {
+  const { name, addressLines, city, postcode } = site.studio;
+  return [name, ...addressLines, city, postcode].filter(Boolean).join(", ");
+}
+
+/**
+ * Directions links that open the right app on a phone. Each searches the
+ * address text rather than fixed coordinates, so a corrected address in
+ * `site.studio` fixes every link at once.
+ */
+export function studioMapLinks(): {
+  google: string;
+  apple: string;
+  waze: string;
+  embed: string;
+} {
+  const q = encodeURIComponent(studioAddressLine());
+  return {
+    google: `https://www.google.com/maps/search/?api=1&query=${q}`,
+    apple: `https://maps.apple.com/?q=${q}`,
+    waze: `https://waze.com/ul?q=${q}&navigate=yes`,
+    embed: `https://maps.google.com/maps?q=${q}&z=16&output=embed`,
+  };
 }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { site } from "@/lib/config";
 import { getPortfolio } from "@/lib/data";
 import { PortfolioGrid } from "@/components/portfolio-grid";
+import { StudioLocation } from "@/components/studio-location";
 
 export default async function HomePage() {
   const portfolio = await getPortfolio();
@@ -97,6 +98,15 @@ export default async function HomePage() {
               </div>
             </dl>
           </div>
+        </div>
+      </section>
+
+      <section id="find-us" className="container-page scroll-mt-24 pt-20 md:pt-28">
+        <div className="border-t border-line pt-12">
+          <h2 className="mb-8 font-display text-3xl leading-none md:text-4xl">
+            Find the studio
+          </h2>
+          <StudioLocation />
         </div>
       </section>
 

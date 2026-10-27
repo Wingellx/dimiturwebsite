@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { site } from "@/lib/config";
+import { site, studioMapLinks } from "@/lib/config";
 
 /**
  * Contact details are optional in config, so every block here is conditional —
@@ -31,8 +31,21 @@ export function SiteFooter() {
                   {line}
                 </span>
               ))}
-              {studio.city ? <span className="block">{studio.city}</span> : null}
+              <span className="block">
+                {[studio.city, studio.postcode].filter(Boolean).join(" ")}
+              </span>
             </address>
+            {studio.directions ? (
+              <p className="mt-2 text-sm text-muted">{studio.directions}</p>
+            ) : null}
+            <a
+              href={studioMapLinks().google}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="mt-2 inline-block text-sm text-ink-soft underline underline-offset-4 hover:text-ink"
+            >
+              Get directions
+            </a>
           </div>
         ) : null}
 
