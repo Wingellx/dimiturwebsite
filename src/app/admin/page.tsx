@@ -12,6 +12,7 @@ import {
 import {
   bookingHorizon,
   dateRange,
+  partOfDay,
   planForDate,
   studioDateKey,
   studioDateLabel,
@@ -39,7 +40,6 @@ function buildTiles(
   const confirmed = bookings.filter((b) => b.status === "confirmed");
   return dateRange(studioDateKey(new Date()), bookingHorizon()).map((date) => {
     const plan = planForDate(date, rota, overrides);
-    const midday = plan.window ? plan.window.start : "10:00";
     return {
       date,
       plan,
@@ -50,12 +50,7 @@ function buildTiles(
           reference: b.reference,
           client_name: b.client_name,
           session_type: b.session_type,
-          part:
-            b.session_type === "full"
-              ? "Full day"
-              : studioTimeLabel(b.starts_at) === midday
-                ? "Morning"
-                : "Afternoon",
+          part: partOfDay(b.starts_at, b.session_type),
           time: `${studioTimeLabel(b.starts_at)}–${studioTimeLabel(b.ends_at)}`,
         })),
     };

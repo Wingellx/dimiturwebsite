@@ -217,13 +217,23 @@ function candidateSlots(plan: DayPlan): Candidate[] {
   const { start, end } = plan.window;
   const out: Candidate[] = [{ session: "full", name: "Full day", start, end }];
   if (plan.halves) {
-    const middle = minutesToHhmm((minutesOf(start) + minutesOf(end)) / 2);
+    const middle = minutesToHhmm(Math.floor((minutesOf(start) + minutesOf(end)) / 2));
     out.push(
       { session: "half", name: "Morning", start, end: middle },
       { session: "half", name: "Afternoon", start: middle, end },
     );
   }
   return out;
+}
+
+/**
+ * "Morning" / "Afternoon" / "Full day" for an existing booking, read from the
+ * booking's own start time. Deliberately not from the day's current hours:
+ * Dim can change or close a day after it's booked, and the label must not flip.
+ */
+export function partOfDay(startsAt: string, session: SessionType): "Morning" | "Afternoon" | "Full day" {
+  if (session === "full") return "Full day";
+  return minutesOf(studioTimeLabel(startsAt)) < 13 * 60 ? "Morning" : "Afternoon";
 }
 
 /**

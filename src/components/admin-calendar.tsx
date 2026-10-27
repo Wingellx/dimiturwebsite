@@ -68,7 +68,16 @@ export function AdminCalendar({ days, rota }: { days: DayTile[]; rota: RotaSetti
 
       <RotaSettingsForm rota={rota} />
 
-      {tile ? <DaySheet tile={tile} onClose={() => setSelected(null)} /> : null}
+      {tile ? (
+        // Keyed on the day's state so the sheet starts fresh after each save
+        // (otherwise a "close anyway?" prompt would outlive the close).
+        <DaySheet
+          key={`${tile.date}-${tile.plan.open}-${tile.plan.window?.start}-${tile.plan.window?.end}`}
+          tile={tile}
+          rota={rota}
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -85,6 +94,7 @@ function DayButton({
   const { plan, bookings } = tile;
   const dayOfMonth = Number(tile.date.slice(8));
   const closedByDim = plan.source === "override" && !plan.open;
+  const bookedWhileClosed = !plan.open && bookings.length > 0;
   const openedByDim = plan.source === "override" && plan.open && !tile.rotaOpen;
   const customHours = plan.open && !plan.halves;
   const full = bookings.some((b) => b.session_type === "full");
@@ -102,8 +112,12 @@ function DayButton({
         closedByDim ? "border-dashed border-line-strong line-through" : "",
         openedByDim ? "border-ink" : "",
         isToday ? "ring-2 ring-ink ring-offset-1 ring-offset-paper" : "",
+        bookedWhileClosed ? "border-ink bg-ink/10 text-ink" : "",
       ].join(" ")}
     >
+      {bookedWhileClosed ? (
+        <span aria-hidden className="absolute top-0.5 right-1 text-[11px] font-bold">!</span>
+      ) : null}
       <span className={plan.open ? "font-medium" : ""}>{dayOfMonth}</span>
       {customHours && plan.window ? (
         <span className="text-[9px] leading-none text-ink-soft">
@@ -126,7 +140,7 @@ function DayButton({
   );
 }
 
-function DaySheet({ tile, onClose }: { tile: DayTile; onClose: () => void }) {
+function DaySheet({ tile, rota, onClose }: { tile: DayTile; rota: RotaSettings; onClose: () => void }) {
   const { plan, bookings } = tile;
   const [confirmClose, setConfirmClose] = useState(false);
   const overridden = plan.source === "override";
@@ -145,6 +159,13 @@ function DaySheet({ tile, onClose }: { tile: DayTile; onClose: () => void }) {
             ×
           </button>
         </div>
+
+        {!plan.open && bookings.length > 0 ? (
+          <p className="mb-4 rounded-sm border border-ink bg-ink/5 p-3 text-sm font-medium">
+            This day is closed but you still have {bookings.length === 1 ? "a client" : "clients"} booked.
+            Open the day, or move or cancel {bookings.length === 1 ? "them" : "each one"} from the list above.
+          </p>
+        ) : null}
 
         {bookings.length > 0 ? (
           <ul className="mb-5 space-y-2">
@@ -224,7 +245,11 @@ function DaySheet({ tile, onClose }: { tile: DayTile; onClose: () => void }) {
           <form action={resetDay} className="mt-4">
             <input type="hidden" name="date" value={tile.date} />
             <SubmitButton className="w-full text-muted underline underline-offset-4">
-              Reset to rota ({tile.rotaOpen ? "tattoo day, 10–6" : "shift day, closed"})
+              Reset to rota (
+              {tile.rotaOpen
+                ? `tattoo day, ${rota.day_start.slice(0, 5)}–${rota.day_end.slice(0, 5)}`
+                : "shift day, closed"}
+              )
             </SubmitButton>
           </form>
         ) : null}

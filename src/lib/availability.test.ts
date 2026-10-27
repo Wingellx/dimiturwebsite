@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   buildAvailability,
   isRotaWorkingDay,
+  partOfDay,
   planForDate,
   type DayOverride,
   type RotaSettings,
@@ -111,4 +112,24 @@ describe("buildAvailability", () => {
       "Afternoon · 14:00–18:00",
     ]);
   });
+});
+
+describe("partOfDay", () => {
+  test("labels come from the booking itself, not the day's current hours", () => {
+    expect(partOfDay("2026-11-06T10:00:00.000Z", "half")).toBe("Morning");
+    expect(partOfDay("2026-11-06T14:00:00.000Z", "half")).toBe("Afternoon");
+    expect(partOfDay("2026-11-06T12:00:00.000Z", "half")).toBe("Morning"); // 12–15 custom split
+    expect(partOfDay("2026-11-06T15:00:00.000Z", "half")).toBe("Afternoon");
+    expect(partOfDay("2026-11-06T10:00:00.000Z", "full")).toBe("Full day");
+  });
+  test("uses London time in summer", () => {
+    expect(partOfDay("2027-06-02T09:00:00.000Z", "half")).toBe("Morning"); // 10:00 BST
+    expect(partOfDay("2027-06-02T13:00:00.000Z", "half")).toBe("Afternoon"); // 14:00 BST
+  });
+});
+
+test("odd default hours split on a whole minute", () => {
+  const rota = { ...ROTA, day_end: "17:15" };
+  const slots = buildAvailability({ rota, overrides: [], taken: [], from: "2026-11-06", to: "2026-11-06", now: NOW })[0].slots;
+  expect(slots.map((s) => s.endsAt)).toContain("2026-11-06T13:37:00.000Z");
 });
