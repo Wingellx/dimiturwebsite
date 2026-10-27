@@ -17,6 +17,12 @@ type SiteConfig = {
   contact: { email: string; phone: string; instagram: string };
   /** Shown to clients when they choose; the site does not charge these. */
   sessions: Record<"half" | "full", { label: string; price: string; length: string }>;
+  /** Taken by card at booking, credited against the session price. */
+  deposit: { amountPence: number; currency: "gbp"; label: string };
+  /** Inside this many hours the client can no longer cancel or move online. */
+  changeCutoffHours: number;
+  /** How long an unpaid slot is held while the client is on Stripe's page. */
+  paymentHoldMinutes: number;
   timezone: string;
   bookingWindowDays: number;
   minimumNoticeHours: number;
@@ -52,6 +58,9 @@ export const site: SiteConfig = {
    * wall-clock time in THIS zone, regardless of where they are browsing from,
    * which is what people actually expect from an appointment.
    */
+  deposit: { amountPence: 5000, currency: "gbp", label: "£50" },
+  changeCutoffHours: 72,
+  paymentHoldMinutes: 30,
   timezone: "Europe/London",
   /** How far ahead a client may book. */
   bookingWindowDays: 90,
@@ -109,3 +118,7 @@ export function studioMapLinks(): {
     embed: `https://maps.google.com/maps?q=${q}&z=16&output=embed`,
   };
 }
+
+/** The deposit terms in one sentence: booking checkbox, Stripe page, policy page. */
+export const TERMS_SENTENCE =
+  "I understand the £50 deposit secures my slot and comes off the final price. It's refunded if I cancel at least 72 hours before my appointment, and kept if I cancel later or don't attend.";
