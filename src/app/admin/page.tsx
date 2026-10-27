@@ -25,6 +25,7 @@ import {
   type RotaSettings,
 } from "@/lib/availability";
 import { site } from "@/lib/config";
+import { depositState } from "@/lib/policy";
 import { logout, artistCancelBooking, artistMoveBooking, markCompleted } from "@/app/actions/admin";
 import { AdminCalendar, type DayTile } from "@/components/admin-calendar";
 
@@ -227,11 +228,14 @@ function BookingCard({
           <p className="mt-0.5 text-xs tracking-[0.08em] text-muted uppercase">
             {site.sessions[booking.session_type].label} · {site.sessions[booking.session_type].price}
             {" · "}
-            {booking.refunded_at
-              ? "Deposit refunded"
-              : booking.deposit_paid_at
-                ? `${site.deposit.label} deposit paid`
-                : "No deposit"}
+            {
+              {
+                none: "No deposit",
+                paid: `${site.deposit.label} deposit paid`,
+                refunded: "Deposit refunded",
+                refund_needed: "Refund needed — do it in Stripe",
+              }[depositState(booking)]
+            }
             {booking.refund_locked ? " · Non-refundable (moved inside 72h)" : ""}
           </p>
           <p className="mt-1 text-sm text-ink-soft">

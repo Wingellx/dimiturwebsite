@@ -13,9 +13,11 @@ import { cancelBooking } from "@/app/actions/booking";
 export function CancelBooking({
   reference,
   token,
+  hasDeposit,
 }: {
   reference: string;
   token: string;
+  hasDeposit: boolean;
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -34,7 +36,7 @@ export function CancelBooking({
         onClick={() => setConfirming(true)}
         className="text-sm text-muted underline underline-offset-4 hover:text-ink"
       >
-        Cancel and get my deposit back
+        {hasDeposit ? "Cancel and get my deposit back" : "Cancel this appointment"}
       </button>
     );
   }
@@ -43,7 +45,9 @@ export function CancelBooking({
     <div className="rounded-sm border border-line bg-paper-raised p-5">
       <p className="text-sm font-medium">Cancel this appointment?</p>
       <p className="mt-1.5 text-sm leading-relaxed text-muted">
-        Your £50 deposit is refunded to your card (usually 5–10 working days).
+        {hasDeposit
+          ? "Your £50 deposit is refunded to your card (usually 5–10 working days). "
+          : ""}
         The slot goes back into the diary straight away. This can&apos;t be
         undone.
       </p>

@@ -80,3 +80,26 @@ export async function refundDeposit(bookingId: string, paymentIntentId: string):
   );
   return refund.id;
 }
+
+/** True if the session is now unable to take payment (expired or already was). */
+export async function expireCheckout(sessionId: string): Promise<boolean> {
+  try {
+    const session = await stripe().checkout.sessions.retrieve(sessionId);
+    if (session.status === "complete") return false;
+    if (session.status === "open") await stripe().checkout.sessions.expire(sessionId);
+    return true;
+  } catch (error) {
+    console.error("Could not expire checkout", sessionId, error);
+    return false;
+  }
+}
+
+/** The payment page to send a client back to, if their session is still open. */
+export async function openCheckoutUrl(sessionId: string): Promise<string | null> {
+  try {
+    const session = await stripe().checkout.sessions.retrieve(sessionId);
+    return session.status === "open" ? session.url : null;
+  } catch {
+    return null;
+  }
+}

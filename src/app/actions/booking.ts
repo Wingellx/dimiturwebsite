@@ -8,8 +8,8 @@ import { getAvailability, getBookingByReference, type Booking } from "@/lib/data
 import { moveToSlot, refundIfPaid } from "@/lib/booking-changes";
 import { sendCancellationNotice } from "@/lib/email";
 import { site } from "@/lib/config";
-import { clientCanChange, holdExpiresAt } from "@/lib/policy";
-import { createDepositCheckout, stripeConfigured } from "@/lib/stripe";
+import { checkoutTimes, clientCanChange } from "@/lib/policy";
+import { createDepositCheckout, expireCheckout, stripeConfigured } from "@/lib/stripe";
 
 export type BookingState = {
   ok: boolean;
@@ -91,7 +91,6 @@ export async function createBooking(
 
   const supabase = adminClient();
   const now = new Date();
-  const expiresAt = holdExpiresAt(now);
 
   // A hold whose 30 minutes are up still matches the overlap constraint until
   // something flips it to 'expired'. Do that for this slot first, so an
@@ -116,7 +115,7 @@ export async function createBooking(
       ends_at: slot.endsAt,
       session_type: slot.session,
       status: "pending_payment",
-      pending_expires_at: expiresAt.toISOString(),
+      pending_expires_at: checkoutTimes(now).holdUntil.toISOString(),
       terms_accepted_at: now.toISOString(),
       placement: placement || null,
       size_estimate: sizeEstimate || null,
@@ -160,6 +159,9 @@ export async function createBooking(
   // when Stripe's webhook reports the deposit paid.
   let checkoutUrl: string;
   try {
+    // Worked out after the uploads, right before the call: Stripe measures its
+    // 30-minute minimum from when it creates the session.
+    const times = checkoutTimes(new Date());
     const checkout = await createDepositCheckout({
       bookingId: booking.id as string,
       reference: booking.reference as string,
@@ -168,11 +170,14 @@ export async function createBooking(
       startsAt: booking.starts_at as string,
       endsAt: booking.ends_at as string,
       sessionLabel: site.sessions[slot.session].label,
-      expiresAt,
+      expiresAt: times.stripeExpiresAt,
     });
     await supabase
       .from("bookings")
-      .update({ stripe_checkout_session_id: checkout.id })
+      .update({
+        stripe_checkout_session_id: checkout.id,
+        pending_expires_at: times.holdUntil.toISOString(),
+      })
       .eq("id", booking.id);
     checkoutUrl = checkout.url;
   } catch (stripeError) {
@@ -266,4 +271,32 @@ export async function moveBooking(_prev: ChangeState, formData: FormData): Promi
   revalidatePath("/admin");
   revalidatePath(`/booking/${reference}`);
   return { ok: true };
+}
+
+/**
+ * The client backed out of Stripe and wants a different time. Ends the
+ * Checkout session first so it can no longer take money, then frees the slot.
+ */
+export async function releaseHold(formData: FormData): Promise<void> {
+  const reference = String(formData.get("reference") ?? "").trim().toUpperCase();
+  const token = String(formData.get("token") ?? "").trim();
+  const booking = await bookingForClient(reference, token);
+
+  if (booking?.status === "pending_payment") {
+    let ended = true;
+    if (booking.stripe_checkout_session_id) {
+      ended = await expireCheckout(booking.stripe_checkout_session_id);
+    }
+    // If Stripe would not expire it, it was completed: leave the row for the
+    // webhook to confirm rather than releasing a paid slot.
+    if (ended) {
+      await adminClient()
+        .from("bookings")
+        .update({ status: "expired" })
+        .eq("id", booking.id)
+        .eq("status", "pending_payment");
+      revalidatePath("/book");
+    }
+  }
+  redirect("/book");
 }

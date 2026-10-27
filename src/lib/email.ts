@@ -135,10 +135,22 @@ export async function sendCancellationNotice(input: {
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">Appointment cancelled</h1>
         <p style="margin:0 0 20px">The appointment on <strong>${when(input.startsAt, input.endsAt)}</strong> (ref ${input.reference}) has been cancelled${input.cancelledBy === "artist" ? " by the studio" : ""}. That slot is now free for someone else.</p>
         ${input.refunded === true ? `<p style="margin:0 0 20px">Your ${site.deposit.label} deposit has been refunded to your card. It usually shows within 5–10 working days.</p>` : ""}
-        ${input.refunded === false ? `<p style="margin:0 0 20px;color:#a33">The automatic deposit refund failed. Refund it by hand in Stripe.</p>` : ""}
+        ${input.refunded === false ? `<p style="margin:0 0 20px">Your ${site.deposit.label} deposit refund is being processed and will reach your card shortly.</p>` : ""}
         <p style="margin:0"><a href="${siteUrl()}/book" style="color:#1a1a1a">Book another time</a></p>
       `),
     });
+    if (input.refunded === false && artistEmail) {
+      // Operator instruction goes to Dim alone, never to the client.
+      await resend.emails.send({
+        from: emailFrom,
+        to: artistEmail,
+        subject: `Refund needed: ${input.clientName} (ref ${input.reference})`,
+        html: shell(`
+          <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">Refund needed</h1>
+          <p style="margin:0">The automatic ${site.deposit.label} refund for ${escapeHtml(input.clientName)} (ref ${input.reference}) failed. Refund it in Stripe: Payments, find the reference, Refund.</p>
+        `),
+      });
+    }
     return { ok: true };
   } catch (error) {
     return { ok: false, error: String(error) };

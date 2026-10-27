@@ -231,3 +231,10 @@ export async function getBookingById(id: string): Promise<Booking | null> {
   if (error) return null;
   return (data as Booking) ?? null;
 }
+
+/** Like getBookingById, but a database error throws so the webhook returns 500 and Stripe retries. */
+export async function requireBookingById(id: string): Promise<Booking | null> {
+  const { data, error } = await adminClient().from("bookings").select(BOOKING_COLUMNS).eq("id", id).maybeSingle();
+  if (error) throw error;
+  return (data as Booking) ?? null;
+}

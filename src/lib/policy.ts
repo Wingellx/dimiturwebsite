@@ -38,8 +38,36 @@ export function holdIsStale(pendingExpiresAt: string, now: Date): boolean {
  * status. Anything already settled is ignored, which is what makes a
  * duplicate webhook delivery harmless.
  */
-export function paidOutcome(status: BookingStatus): "confirm" | "try_reclaim" | "ignore" {
+export function paidOutcome(
+  status: BookingStatus,
+  { refunded = false }: { refunded?: boolean } = {},
+): "confirm" | "try_reclaim" | "ignore" {
   if (status === "pending_payment") return "confirm";
-  if (status === "expired") return "try_reclaim";
+  // A late payment that was already refunded must never be confirmed or
+  // refunded again when Stripe redelivers the event.
+  if (status === "expired" && !refunded) return "try_reclaim";
   return "ignore";
+}
+
+/**
+ * Stripe requires a Checkout session to live at least 30 minutes from when
+ * Stripe creates it, so the request carries a minute of margin. The slot hold
+ * runs to the same instant: it must never lapse while Stripe still takes money.
+ */
+export function checkoutTimes(now: Date): { stripeExpiresAt: Date; holdUntil: Date } {
+  const stripeExpiresAt = new Date(now.getTime() + (site.paymentHoldMinutes + 1) * MINUTE);
+  return { stripeExpiresAt, holdUntil: stripeExpiresAt };
+}
+
+export type DepositState = "none" | "paid" | "refunded" | "refund_needed";
+
+/** What the admin card says about the money, including a refund that failed. */
+export function depositState(booking: {
+  deposit_paid_at: string | null;
+  refunded_at: string | null;
+  status: BookingStatus;
+}): DepositState {
+  if (!booking.deposit_paid_at) return "none";
+  if (booking.refunded_at) return "refunded";
+  return booking.status === "cancelled" ? "refund_needed" : "paid";
 }

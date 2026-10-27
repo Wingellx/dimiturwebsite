@@ -3,7 +3,7 @@ import "server-only";
 import type Stripe from "stripe";
 
 import { adminClient } from "./supabase";
-import { getBookingById, type Booking } from "./data";
+import { requireBookingById, type Booking } from "./data";
 import { paidOutcome } from "./policy";
 import { refundDeposit } from "./stripe";
 import { sendArtistNotification, sendClientConfirmation, sendLatePaymentRefund } from "./email";
@@ -39,7 +39,10 @@ async function confirmFrom(
     .select("id")
     .maybeSingle();
 
-  if (error) return { confirmed: false, overlap: error.code === "23P01" };
+  if (error?.code === "23P01") return { confirmed: false, overlap: true };
+  // Anything else is unexpected: throw so the webhook answers 500 and Stripe
+  // retries, instead of acknowledging and losing a paid booking.
+  if (error) throw error;
   return { confirmed: Boolean(data), overlap: false };
 }
 
@@ -70,11 +73,11 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
   const bookingId = session.metadata?.booking_id;
   if (!bookingId || session.payment_status !== "paid") return;
 
-  const booking = await getBookingById(bookingId);
+  const booking = await requireBookingById(bookingId);
   if (!booking) return;
   const intentId = paymentIntentId(session);
 
-  switch (paidOutcome(booking.status)) {
+  switch (paidOutcome(booking.status, { refunded: Boolean(booking.stripe_refund_id) })) {
     case "confirm": {
       const result = await confirmFrom(booking, "pending_payment", intentId);
       if (result.confirmed) await sendConfirmationEmails(booking);
@@ -83,10 +86,11 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
     case "try_reclaim": {
       // Paid after the hold lapsed. Keep the booking if the slot is still
       // free; if someone else has it, give the money straight back.
-      await adminClient().rpc("release_stale_holds", {
+      const released = await adminClient().rpc("release_stale_holds", {
         range_start: booking.starts_at,
         range_end: booking.ends_at,
       });
+      if (released.error) throw released.error;
       const result = await confirmFrom(booking, "expired", intentId);
       if (result.confirmed) {
         await sendConfirmationEmails(booking);
@@ -94,7 +98,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       }
       if (result.overlap && intentId) {
         const refundId = await refundDeposit(booking.id, intentId);
-        await adminClient()
+        const saved = await adminClient()
           .from("bookings")
           .update({
             stripe_payment_intent_id: intentId,
@@ -102,6 +106,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
             refunded_at: new Date().toISOString(),
           })
           .eq("id", booking.id);
+        if (saved.error) throw saved.error;
         await sendLatePaymentRefund({
           clientName: booking.client_name,
           clientEmail: booking.client_email,
@@ -119,9 +124,10 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
 export async function handleCheckoutExpired(session: Stripe.Checkout.Session): Promise<void> {
   const bookingId = session.metadata?.booking_id;
   if (!bookingId) return;
-  await adminClient()
+  const { error } = await adminClient()
     .from("bookings")
     .update({ status: "expired" })
     .eq("id", bookingId)
     .eq("status", "pending_payment");
+  if (error) throw error;
 }

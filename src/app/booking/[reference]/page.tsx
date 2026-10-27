@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 
 import { getAvailability, getBookingByReference } from "@/lib/data";
 import { clientCanChange } from "@/lib/policy";
-import { moveBooking } from "@/app/actions/booking";
+import { moveBooking, releaseHold } from "@/app/actions/booking";
+import { openCheckoutUrl } from "@/lib/stripe";
 import { MoveBooking } from "@/components/move-booking";
 import { PaymentPending } from "@/components/payment-pending";
 import { studioDateLabel, studioTimeLabel } from "@/lib/availability";
@@ -31,6 +32,11 @@ export default async function BookingPage({
 
   if (booking.status === "pending_payment" || booking.status === "expired") {
     const pending = booking.status === "pending_payment";
+    const ownsHold = Boolean(token) && token === booking.cancel_token;
+    const resumeUrl =
+      pending && ownsHold && booking.stripe_checkout_session_id
+        ? await openCheckoutUrl(booking.stripe_checkout_session_id)
+        : null;
     return (
       <div className="container-page py-12 md:py-20">
         <div className="mx-auto max-w-xl">
@@ -40,17 +46,38 @@ export default async function BookingPage({
           <h1 className="mt-4 font-display text-4xl leading-none md:text-5xl">
             {pending ? "Almost there" : "This booking wasn't completed"}
           </h1>
-          {pending ? (
+          {pending && resumeUrl ? (
+            <>
+              <p className="mt-4 text-base leading-relaxed text-ink-soft">
+                Your slot is held while you pay the {site.deposit.label} deposit.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <a href={resumeUrl} className="rounded-sm bg-ink px-6 py-3 text-sm font-medium text-paper">
+                  Continue to payment
+                </a>
+                <form action={releaseHold}>
+                  <input type="hidden" name="reference" value={booking.reference} />
+                  <input type="hidden" name="token" value={token} />
+                  <button type="submit" className="rounded-sm border border-line-strong px-6 py-3 text-sm">
+                    Choose a different time
+                  </button>
+                </form>
+              </div>
+            </>
+          ) : pending ? (
             <PaymentPending />
           ) : (
-            <p className="mt-4 text-base leading-relaxed text-ink-soft">
-              The deposit wasn&apos;t paid within {site.paymentHoldMinutes} minutes, so the slot
-              was released. Nothing has been charged.
-            </p>
+            <>
+              <p className="mt-4 text-base leading-relaxed text-ink-soft">
+                {booking.refunded_at
+                  ? `Your payment came through after the ${site.paymentHoldMinutes}-minute hold ran out and the slot had been taken, so your ${site.deposit.label} deposit has been refunded in full.`
+                  : `The deposit wasn't paid within ${site.paymentHoldMinutes} minutes, so the slot was released. Nothing has been charged.`}
+              </p>
+              <Link href="/book" className="mt-8 inline-block rounded-sm bg-ink px-6 py-3 text-sm font-medium text-paper">
+                Book a time
+              </Link>
+            </>
           )}
-          <Link href="/book" className="mt-8 inline-block rounded-sm bg-ink px-6 py-3 text-sm font-medium text-paper">
-            {pending ? "Start again" : "Book a time"}
-          </Link>
         </div>
       </div>
     );
@@ -140,7 +167,7 @@ export default async function BookingPage({
               hidden={{ reference: booking.reference, token }}
               reasonRequired
             />
-            <CancelBooking reference={booking.reference} token={token} />
+            <CancelBooking reference={booking.reference} token={token} hasDeposit={Boolean(booking.deposit_paid_at)} />
             <p className="text-xs leading-relaxed text-muted">
               You can move or cancel online up to {site.changeCutoffHours} hours before your appointment.
             </p>

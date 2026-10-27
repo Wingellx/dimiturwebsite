@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { clientCanChange, holdExpiresAt, holdIsStale, paidOutcome, withinCutoff } from "./policy";
+import { checkoutTimes, clientCanChange, depositState, holdExpiresAt, holdIsStale, paidOutcome, withinCutoff } from "./policy";
 
 const start = "2026-11-10T10:00:00.000Z";
 const at = (iso: string) => new Date(iso);
@@ -33,4 +33,24 @@ test("paidOutcome", () => {
   expect(paidOutcome("expired")).toBe("try_reclaim");
   expect(paidOutcome("confirmed")).toBe("ignore"); // duplicate webhook
   expect(paidOutcome("cancelled")).toBe("ignore");
+});
+
+test("checkout expiry has margin over Stripe's 30-minute minimum, and the hold outlasts it", () => {
+  const now = at("2026-11-01T12:00:00.000Z");
+  const { stripeExpiresAt, holdUntil } = checkoutTimes(now);
+  expect(stripeExpiresAt.getTime() - now.getTime()).toBeGreaterThanOrEqual(31 * 60 * 1000);
+  expect(holdUntil.getTime()).toBeGreaterThanOrEqual(stripeExpiresAt.getTime());
+});
+
+test("a refunded late payment is never reprocessed", () => {
+  expect(paidOutcome("expired", { refunded: true })).toBe("ignore");
+  expect(paidOutcome("expired", { refunded: false })).toBe("try_reclaim");
+});
+
+test("depositState", () => {
+  const base = { deposit_paid_at: null, refunded_at: null, status: "confirmed" as const };
+  expect(depositState(base)).toBe("none");
+  expect(depositState({ ...base, deposit_paid_at: "x" })).toBe("paid");
+  expect(depositState({ ...base, deposit_paid_at: "x", refunded_at: "y" })).toBe("refunded");
+  expect(depositState({ ...base, deposit_paid_at: "x", status: "cancelled" })).toBe("refund_needed");
 });
