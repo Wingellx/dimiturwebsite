@@ -233,10 +233,11 @@ function candidateSlots(plan: DayPlan): Candidate[] {
  */
 export function partOfDay(
   startsAt: string,
-  session: SessionType | "custom",
-): "Morning" | "Afternoon" | "Full day" | "Custom" {
+  session: SessionType | "custom" | "consultation",
+): "Morning" | "Afternoon" | "Full day" | "Custom" | "Consultation" {
   if (session === "full") return "Full day";
   if (session === "custom") return "Custom";
+  if (session === "consultation") return "Consultation";
   return minutesOf(studioTimeLabel(startsAt)) < 13 * 60 ? "Morning" : "Afternoon";
 }
 

@@ -43,6 +43,10 @@ export type Booking = {
   refunded_at: string | null;
   refund_locked: boolean;
   cancellation_note: string | null;
+  consultation_option: "same_day" | "separate" | null;
+  consultation_status: "confirmed" | "requested" | "approved" | null;
+  consultation_requested_start: string | null;
+  consultation_block_id: string | null;
 };
 
 export type BookingMove = {
@@ -57,7 +61,7 @@ export type BookingMove = {
 };
 
 const BOOKING_COLUMNS =
-  "id, reference, client_name, client_email, client_phone, starts_at, ends_at, placement, size_estimate, notes, session_type, status, created_at, cancel_token, pending_expires_at, stripe_checkout_session_id, stripe_payment_intent_id, deposit_paid_at, stripe_refund_id, refunded_at, refund_locked, cancellation_note, price_label";
+  "id, reference, client_name, client_email, client_phone, starts_at, ends_at, placement, size_estimate, notes, session_type, status, created_at, cancel_token, pending_expires_at, stripe_checkout_session_id, stripe_payment_intent_id, deposit_paid_at, stripe_refund_id, refunded_at, refund_locked, cancellation_note, price_label, consultation_option, consultation_status, consultation_requested_start, consultation_block_id";
 
 /**
  * Availability for the whole bookable window.

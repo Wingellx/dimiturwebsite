@@ -123,7 +123,10 @@ export function studioMapLinks(): {
 export const TERMS_SENTENCE =
   "I understand the £50 deposit secures my slot and comes off the final price. If I cancel at least 72 hours before my appointment it's refunded minus the card processing fee (usually about £1); if I cancel later or don't attend, it's kept.";
 
-export type BookingSession = "half" | "full" | "custom";
+export type BookingSession = "half" | "full" | "custom" | "consultation";
+
+/** Optional add-on a client can choose after booking; paid on the tattoo day. */
+export const CONSULTATION = { minutes: 30, price: "£20", label: "Design consultation" };
 
 /** Label and price for any booking, including Dim's hand-made custom ones. */
 export function sessionSummary(
@@ -131,6 +134,7 @@ export function sessionSummary(
   priceLabel?: string | null,
 ): { label: string; price: string } {
   if (type === "custom") return { label: "Custom session", price: formatPriceLabel(priceLabel) };
+  if (type === "consultation") return { label: CONSULTATION.label, price: `${CONSULTATION.price}, paid on the tattoo day` };
   return { label: site.sessions[type].label, price: site.sessions[type].price };
 }
 

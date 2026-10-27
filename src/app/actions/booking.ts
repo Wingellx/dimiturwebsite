@@ -7,7 +7,8 @@ import { adminClient, supabaseConfigured } from "@/lib/supabase";
 import { getAvailability, getBookingByReference, type Booking } from "@/lib/data";
 import { moveToSlot, refundIfPaid } from "@/lib/booking-changes";
 import { sendCancellationNotice } from "@/lib/email";
-import { cancellationAlert, postToSlack } from "@/lib/slack";
+import { cancellationAlert, consultationAlert, postToSlack } from "@/lib/slack";
+import { studioInstant } from "@/lib/availability";
 import { site } from "@/lib/config";
 import { checkoutTimes, clientCanChange } from "@/lib/policy";
 import { createDepositCheckout, expireCheckout, stripeConfigured } from "@/lib/stripe";
@@ -229,6 +230,14 @@ export async function cancelBooking(_prev: ChangeState, formData: FormData): Pro
     .maybeSingle();
   if (!data) return { ok: false, error: "We couldn't cancel that booking. It may already have been cancelled." };
 
+  if (booking.consultation_block_id) {
+    await supabase
+      .from("bookings")
+      .update({ status: "cancelled", cancelled_at: new Date().toISOString(), cancelled_by: "client" })
+      .eq("id", booking.consultation_block_id)
+      .eq("status", "confirmed");
+  }
+
   const refunded = await refundIfPaid(booking, "client");
 
   await sendCancellationNotice({
@@ -309,4 +318,78 @@ export async function releaseHold(formData: FormData): Promise<void> {
     }
   }
   redirect("/book");
+}
+
+export type ConsultationState = { ok: boolean; error?: string };
+
+/**
+ * The client adds, changes or removes the optional design consultation from
+ * their booking page. Nothing is charged here: it's paid on the tattoo day.
+ */
+export async function setConsultation(_prev: ConsultationState, formData: FormData): Promise<ConsultationState> {
+  const reference = String(formData.get("reference") ?? "").trim().toUpperCase();
+  const token = String(formData.get("token") ?? "").trim();
+  const option = String(formData.get("option") ?? "");
+  const date = String(formData.get("date") ?? "");
+  const time = String(formData.get("time") ?? "").slice(0, 5);
+
+  const booking = await bookingForClient(reference, token);
+  if (!booking || booking.status !== "confirmed" || booking.session_type === "consultation") {
+    return { ok: false, error: "We couldn't find that booking." };
+  }
+  if (new Date(booking.starts_at).getTime() <= Date.now()) {
+    return { ok: false, error: "This appointment has already started." };
+  }
+
+  const supabase = adminClient();
+  // Any previously approved separate-day slot is freed when the choice changes.
+  if (booking.consultation_block_id) {
+    await supabase
+      .from("bookings")
+      .update({ status: "cancelled", cancelled_at: new Date().toISOString(), cancelled_by: "client" })
+      .eq("id", booking.consultation_block_id)
+      .eq("status", "confirmed");
+  }
+
+  let update: Record<string, unknown>;
+  if (option === "none") {
+    update = { consultation_option: null, consultation_status: null, consultation_requested_start: null, consultation_block_id: null };
+  } else if (option === "same_day") {
+    update = { consultation_option: "same_day", consultation_status: "confirmed", consultation_requested_start: null, consultation_block_id: null };
+  } else if (option === "separate") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+      return { ok: false, error: "Pick a date and time you'd like." };
+    }
+    const requested = studioInstant(date, { hours: Number(time.slice(0, 2)), minutes: Number(time.slice(3)) });
+    if (requested.getTime() <= Date.now()) return { ok: false, error: "That time has already passed." };
+    if (requested.getTime() >= new Date(booking.starts_at).getTime()) {
+      return { ok: false, error: "Pick a time before your tattoo appointment." };
+    }
+    update = {
+      consultation_option: "separate",
+      consultation_status: "requested",
+      consultation_requested_start: requested.toISOString(),
+      consultation_block_id: null,
+    };
+  } else {
+    return { ok: false, error: "Choose an option." };
+  }
+
+  const { error } = await supabase.from("bookings").update(update).eq("id", booking.id);
+  if (error) return { ok: false, error: "Couldn't save that. Please try again." };
+
+  await postToSlack(
+    consultationAlert({
+      clientName: booking.client_name,
+      tattooStartsAt: booking.starts_at,
+      tattooEndsAt: booking.ends_at,
+      option: (update.consultation_option as "same_day" | "separate" | null) ?? null,
+      requestedStart: (update.consultation_requested_start as string | null) ?? null,
+    }),
+  );
+
+  revalidatePath(`/booking/${reference}`);
+  revalidatePath("/admin");
+  revalidatePath("/book");
+  return { ok: true };
 }

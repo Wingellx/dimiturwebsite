@@ -1,6 +1,6 @@
 import "server-only";
 
-import { site, siteUrl, sessionText, type BookingSession } from "./config";
+import { CONSULTATION, site, siteUrl, sessionText, type BookingSession } from "./config";
 import { studioDateLabel, studioTimeLabel } from "./availability";
 
 /**
@@ -86,4 +86,22 @@ export function moveAlert(input: {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+export function consultationAlert(input: {
+  clientName: string;
+  tattooStartsAt: string;
+  tattooEndsAt: string;
+  option: "same_day" | "separate" | null;
+  requestedStart: string | null;
+}): string {
+  if (!input.option) {
+    return `:heavy_minus_sign: *Consultation removed* — ${clean(input.clientName)} (tattoo ${when(input.tattooStartsAt, input.tattooEndsAt)})`;
+  }
+  const head = `:pencil2: *Design consultation added* — ${clean(input.clientName)} · ${CONSULTATION.price} due on the tattoo day`;
+  if (input.option === "same_day") {
+    return `${head}\nAt the start of their tattoo session: ${when(input.tattooStartsAt, input.tattooEndsAt)}`;
+  }
+  const requested = input.requestedStart ? studioDateLabel(input.requestedStart) + ", " + studioTimeLabel(input.requestedStart) : "?";
+  return `${head}\n*Requested: ${requested}* — approve or ask for another time in <${siteUrl()}/admin|admin>`;
 }

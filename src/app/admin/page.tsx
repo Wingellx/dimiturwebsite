@@ -24,11 +24,12 @@ import {
   type DayOverride,
   type RotaSettings,
 } from "@/lib/availability";
-import { sessionText, site } from "@/lib/config";
+import { CONSULTATION, sessionText, site } from "@/lib/config";
 import { depositState } from "@/lib/policy";
 import { logout, artistCancelBooking, artistMoveBooking, markCompleted } from "@/app/actions/admin";
 import { AdminCalendar, type DayTile } from "@/components/admin-calendar";
 import { ManualBookingForm } from "@/components/manual-booking-form";
+import { ConsultationRequests } from "@/components/consultation-requests";
 
 export const metadata: Metadata = {
   title: "Studio admin",
@@ -140,6 +141,19 @@ export default async function AdminPage() {
         </form>
       </header>
 
+      <ConsultationRequests
+        requests={upcoming
+          .filter((b) => b.consultation_status === "requested" && b.consultation_requested_start)
+          .map((b) => ({
+            id: b.id,
+            clientName: b.client_name,
+            clientPhone: b.client_phone,
+            clientEmail: b.client_email,
+            requestedLabel: `${studioDateLabel(b.consultation_requested_start as string)}, ${studioTimeLabel(b.consultation_requested_start as string)}`,
+            tattooLabel: `${studioDateLabel(b.starts_at)}, ${studioTimeLabel(b.starts_at)}`,
+          }))}
+      />
+
       <section className="mb-16">
         <h2 className="mb-5 font-display text-2xl">Upcoming</h2>
         <div className="mb-5">
@@ -243,6 +257,16 @@ function BookingCard({
             }
             {booking.refund_locked ? " · Non-refundable (moved inside 72h)" : ""}
           </p>
+          {booking.consultation_option ? (
+            <p className="mt-1 inline-block rounded-sm bg-ink px-2 py-0.5 text-xs font-medium text-paper">
+              + {CONSULTATION.label} ({CONSULTATION.price} due on the day) ·{" "}
+              {booking.consultation_option === "same_day"
+                ? "start of the session"
+                : booking.consultation_status === "approved"
+                  ? `${studioDateLabel(booking.consultation_requested_start as string)} ${studioTimeLabel(booking.consultation_requested_start as string)}`
+                  : "requested, see above"}
+            </p>
+          ) : null}
           <p className="mt-1 text-sm text-ink-soft">
             {booking.client_name} ·{" "}
             <a href={`mailto:${booking.client_email}`} className="underline underline-offset-2">

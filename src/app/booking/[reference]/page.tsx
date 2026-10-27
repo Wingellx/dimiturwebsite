@@ -8,7 +8,8 @@ import { moveBooking, releaseHold } from "@/app/actions/booking";
 import { openCheckoutUrl } from "@/lib/stripe";
 import { MoveBooking } from "@/components/move-booking";
 import { PaymentPending } from "@/components/payment-pending";
-import { studioDateLabel, studioTimeLabel } from "@/lib/availability";
+import { ConsultationPicker } from "@/components/consultation-picker";
+import { studioDateKey, studioDateLabel, studioTimeLabel } from "@/lib/availability";
 import { sessionSummary, site } from "@/lib/config";
 import { CancelBooking } from "@/components/cancel-booking";
 
@@ -18,6 +19,11 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
+
+/** Outside the component because it reads the clock. */
+function isUpcoming(startsAt: string): boolean {
+  return new Date(startsAt).getTime() > Date.now();
+}
 
 export default async function BookingPage({
   params,
@@ -130,6 +136,23 @@ export default async function BookingPage({
           </div>
         ) : null}
 
+        {!cancelled && ownsLink && booking.session_type !== "consultation" && isUpcoming(booking.starts_at) ? (
+          <div className="mt-8">
+            <ConsultationPicker
+              reference={booking.reference}
+              token={token}
+              option={booking.consultation_option}
+              status={booking.consultation_status}
+              requestedLabel={
+                booking.consultation_requested_start
+                  ? `${studioDateLabel(booking.consultation_requested_start)}, ${studioTimeLabel(booking.consultation_requested_start)}`
+                  : null
+              }
+              latestDate={studioDateKey(new Date(new Date(booking.starts_at).getTime() - 24 * 60 * 60 * 1000))}
+            />
+          </div>
+        ) : null}
+
         {!cancelled ? (
           <Link
             href="/before-your-tattoo"
@@ -138,7 +161,7 @@ export default async function BookingPage({
             <span>
               <span className="block font-medium">Before your tattoo</span>
               <span className="block text-sm text-paper/70">
-                Eating, water, sleep and what to bring. Two-minute read.
+                Eating, water, sleep and what to wear. Two-minute read.
               </span>
             </span>
             <span aria-hidden>→</span>

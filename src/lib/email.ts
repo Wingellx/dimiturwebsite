@@ -1,7 +1,17 @@
 import "server-only";
 
 import { Resend } from "resend";
-import { site, emailFrom, siteUrl, sessionText, formatPriceLabel, TERMS_SENTENCE, type BookingSession } from "./config";
+import {
+  site,
+  emailFrom,
+  siteUrl,
+  sessionText,
+  formatPriceLabel,
+  studioAddressLine,
+  CONSULTATION,
+  TERMS_SENTENCE,
+  type BookingSession,
+} from "./config";
 import { studioDateLabel, studioTimeLabel } from "./availability";
 import { formatPence } from "./policy";
 import type { RefundOutcome } from "./booking-changes";
@@ -254,6 +264,34 @@ export async function sendDepositRequest(input: {
         <p style="margin:0 0 20px">Hi ${escapeHtml(input.clientName)}, ${site.artist} has set aside <strong>${when(input.startsAt, input.endsAt)}</strong> for you${input.priceLabel ? ` (${escapeHtml(formatPriceLabel(input.priceLabel))})` : ""}. Pay the ${site.deposit.label} deposit within 23 hours to confirm it. It comes off your final price.</p>
         <p style="margin:0 0 24px"><a href="${input.payUrl}" style="display:inline-block;background:#14110f;color:#faf8f5;padding:12px 20px;border-radius:4px;text-decoration:none">Pay ${site.deposit.label} deposit</a></p>
         <p style="margin:0;font-size:14px;color:#5a5550">${TERMS_SENTENCE}</p>
+      `),
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+}
+
+/** Dim approved a separate-day design consultation. */
+export async function sendConsultationConfirmed(input: {
+  clientName: string;
+  clientEmail: string;
+  startsAt: string;
+  endsAt: string;
+  tattooStartsAt: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const resend = client();
+  if (!resend) return { ok: false, error: "RESEND_API_KEY not set" };
+  try {
+    await resend.emails.send({
+      from: emailFrom,
+      to: input.clientEmail,
+      subject: `Design consultation confirmed: ${when(input.startsAt, input.endsAt)}`,
+      html: shell(`
+        <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">Consultation confirmed</h1>
+        <p style="margin:0 0 20px">Hi ${escapeHtml(input.clientName)}, your ${CONSULTATION.minutes}-minute design consultation with ${site.artist} is booked for <strong>${when(input.startsAt, input.endsAt)}</strong>.</p>
+        <p style="margin:0 0 20px">The ${CONSULTATION.price} is paid on the day of your tattoo (${studioDateLabel(input.tattooStartsAt)}), not before.</p>
+        <p style="margin:0;font-size:14px;color:#5a5550">${studioAddressLine()}. ${site.studio.directions}.</p>
       `),
     });
     return { ok: true };

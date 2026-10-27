@@ -10,7 +10,8 @@ import {
   isAuthenticated,
 } from "@/lib/admin-auth";
 import { adminClient } from "@/lib/supabase";
-import { sendCancellationNotice, sendDepositRequest } from "@/lib/email";
+import { sendCancellationNotice, sendConsultationConfirmed, sendDepositRequest } from "@/lib/email";
+import { CONSULTATION } from "@/lib/config";
 import { cancellationAlert, postToSlack } from "@/lib/slack";
 import { getBookingById, getRota } from "@/lib/data";
 import { moveToSlot, refundIfPaid } from "@/lib/booking-changes";
@@ -75,6 +76,14 @@ export async function artistCancelBooking(formData: FormData): Promise<void> {
     .eq("status", "confirmed")
     .select("id")
     .maybeSingle();
+
+  if (data && booking.consultation_block_id) {
+    await adminClient()
+      .from("bookings")
+      .update({ status: "cancelled", cancelled_at: new Date().toISOString(), cancelled_by: "artist" })
+      .eq("id", booking.consultation_block_id)
+      .eq("status", "confirmed");
+  }
 
   if (data) {
     const refunded = await refundIfPaid(booking, "artist");
@@ -338,4 +347,63 @@ export async function createManualBooking(
     await supabase.from("bookings").update({ status: "expired" }).eq("id", saved.id);
     return { ok: false, error: "Couldn't create the payment link. Please try again." };
   }
+}
+
+/**
+ * Dim approves a separate-day consultation request. The 30 minutes become a
+ * 'consultation' booking row, so the overlap guard keeps it free, and the
+ * client is emailed that it's confirmed.
+ */
+export async function approveConsultation(
+  _prev: { ok: boolean; error?: string },
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const booking = await getBookingById(id);
+  if (!booking || booking.status !== "confirmed" || booking.consultation_status !== "requested" || !booking.consultation_requested_start) {
+    return { ok: false, error: "That request isn't waiting any more." };
+  }
+
+  const start = new Date(booking.consultation_requested_start);
+  const end = new Date(start.getTime() + CONSULTATION.minutes * 60 * 1000);
+  const supabase = adminClient();
+  await supabase.rpc("release_stale_holds", { range_start: start.toISOString(), range_end: end.toISOString() });
+
+  const { data: block, error } = await supabase
+    .from("bookings")
+    .insert({
+      client_name: booking.client_name,
+      client_email: booking.client_email,
+      client_phone: booking.client_phone,
+      starts_at: start.toISOString(),
+      ends_at: end.toISOString(),
+      session_type: "consultation",
+      status: "confirmed",
+      notes: `Design consultation for booking ${booking.reference}`,
+    })
+    .select("id")
+    .single();
+  if (error) {
+    if (error.code === "23P01") return { ok: false, error: "That time overlaps another booking. Ask them for another time." };
+    return { ok: false, error: "Couldn't approve it. Please try again." };
+  }
+
+  await supabase
+    .from("bookings")
+    .update({ consultation_status: "approved", consultation_block_id: block.id })
+    .eq("id", booking.id);
+
+  await sendConsultationConfirmed({
+    clientName: booking.client_name,
+    clientEmail: booking.client_email,
+    startsAt: start.toISOString(),
+    endsAt: end.toISOString(),
+    tattooStartsAt: booking.starts_at,
+  });
+
+  revalidatePath("/admin");
+  revalidatePath("/book");
+  revalidatePath(`/booking/${booking.reference}`);
+  return { ok: true };
 }
