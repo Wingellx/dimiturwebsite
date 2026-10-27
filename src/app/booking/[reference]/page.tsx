@@ -57,6 +57,12 @@ export default async function BookingPage({
               {studioTimeLabel(booking.starts_at)}–{studioTimeLabel(booking.ends_at)}
             </span>
           </Row>
+          <Row label="Session">
+            {site.sessions[booking.session_type].label}{" "}
+            <span className="text-ink-soft">
+              ({site.sessions[booking.session_type].price}, paid on the day)
+            </span>
+          </Row>
           <Row label="Reference">
             <span className="font-mono">{booking.reference}</span>
           </Row>

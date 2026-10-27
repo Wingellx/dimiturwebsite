@@ -210,15 +210,17 @@ function overlapsTaken(
 }
 
 /** The sessions a day's plan would sell, before anything is taken. */
-function candidateSlots(plan: DayPlan): { session: SessionType; name: string; start: string; end: string }[] {
+type Candidate = { session: SessionType; name: string; start: string; end: string };
+
+function candidateSlots(plan: DayPlan): Candidate[] {
   if (!plan.open || !plan.window) return [];
   const { start, end } = plan.window;
-  const out = [{ session: "full" as const, name: "Full day", start, end }];
+  const out: Candidate[] = [{ session: "full", name: "Full day", start, end }];
   if (plan.halves) {
     const middle = minutesToHhmm((minutesOf(start) + minutesOf(end)) / 2);
     out.push(
-      { session: "half" as const, name: "Morning", start, end: middle },
-      { session: "half" as const, name: "Afternoon", start: middle, end },
+      { session: "half", name: "Morning", start, end: middle },
+      { session: "half", name: "Afternoon", start: middle, end },
     );
   }
   return out;

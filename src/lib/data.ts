@@ -5,9 +5,10 @@ import {
   buildAvailability,
   bookingHorizon,
   studioDateKey,
-  type AvailabilityRule,
-  type AvailabilityException,
   type DayAvailability,
+  type DayOverride,
+  type RotaSettings,
+  type SessionType,
   type TakenSlot,
 } from "./availability";
 
@@ -28,9 +29,13 @@ export type Booking = {
   placement: string | null;
   size_estimate: string | null;
   notes: string | null;
+  session_type: SessionType;
   status: "confirmed" | "cancelled" | "completed";
   created_at: string;
 };
+
+const BOOKING_COLUMNS =
+  "id, reference, client_name, client_email, client_phone, starts_at, ends_at, placement, size_estimate, notes, session_type, status, created_at";
 
 /**
  * Availability for the whole bookable window.
@@ -46,33 +51,51 @@ export async function getAvailability(): Promise<DayAvailability[]> {
   const today = studioDateKey(new Date());
   const horizon = bookingHorizon();
 
-  const [rulesResult, exceptionsResult, takenResult] = await Promise.all([
-    supabase
-      .from("availability_rules")
-      .select("day_of_week, start_time, end_time, slot_minutes")
-      .eq("active", true),
-    supabase
-      .from("availability_exceptions")
-      .select("date, kind, start_time, end_time, slot_minutes")
-      .gte("date", today)
-      .lte("date", horizon),
+  const [rota, overrides, takenResult] = await Promise.all([
+    getRota(),
+    getDayOverrides(today, horizon),
     supabase
       .from("taken_slots")
       .select("starts_at, ends_at")
       .gte("starts_at", new Date().toISOString()),
   ]);
 
-  if (rulesResult.error) throw rulesResult.error;
-  if (exceptionsResult.error) throw exceptionsResult.error;
   if (takenResult.error) throw takenResult.error;
+  // No rota row means the migration hasn't run: show "not taking bookings"
+  // rather than guessing at a schedule.
+  if (!rota) return [];
 
   return buildAvailability({
-    rules: (rulesResult.data ?? []) as AvailabilityRule[],
-    exceptions: (exceptionsResult.data ?? []) as AvailabilityException[],
+    rota,
+    overrides,
     taken: (takenResult.data ?? []) as TakenSlot[],
     from: today,
     to: horizon,
   });
+}
+
+/** The single rota settings row, or null before migration 003 is applied. */
+export async function getRota(): Promise<RotaSettings | null> {
+  if (!supabaseConfigured()) return null;
+  const { data, error } = await publicClient()
+    .from("rota_settings")
+    .select("pattern, anchor_date, day_start, day_end")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as RotaSettings) ?? null;
+}
+
+/** Dim's per-date changes between two "YYYY-MM-DD" dates, inclusive. */
+export async function getDayOverrides(from: string, to: string): Promise<DayOverride[]> {
+  if (!supabaseConfigured()) return [];
+  const { data, error } = await publicClient()
+    .from("day_overrides")
+    .select("date, open, start_time, end_time")
+    .gte("date", from)
+    .lte("date", to);
+  if (error) throw error;
+  return (data ?? []) as DayOverride[];
 }
 
 /**
@@ -113,9 +136,7 @@ export async function listBookings(): Promise<Booking[]> {
 
   const { data, error } = await adminClient()
     .from("bookings")
-    .select(
-      "id, reference, client_name, client_email, client_phone, starts_at, ends_at, placement, size_estimate, notes, status, created_at",
-    )
+    .select(BOOKING_COLUMNS)
     .order("starts_at", { ascending: true });
 
   if (error) throw error;
@@ -155,41 +176,10 @@ export async function getBookingByReference(
 
   const { data, error } = await adminClient()
     .from("bookings")
-    .select(
-      "id, reference, client_name, client_email, client_phone, starts_at, ends_at, placement, size_estimate, notes, status, created_at",
-    )
+    .select(BOOKING_COLUMNS)
     .eq("reference", reference.toUpperCase())
     .maybeSingle();
 
   if (error) return null;
   return (data as Booking) ?? null;
-}
-
-export async function getAvailabilityRules(): Promise<
-  (AvailabilityRule & { id: string; active: boolean })[]
-> {
-  if (!supabaseConfigured()) return [];
-  const { data, error } = await adminClient()
-    .from("availability_rules")
-    .select("id, day_of_week, start_time, end_time, slot_minutes, active")
-    .order("day_of_week", { ascending: true })
-    .order("start_time", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as (AvailabilityRule & { id: string; active: boolean })[];
-}
-
-export async function getAvailabilityExceptions(): Promise<
-  (AvailabilityException & { id: string; note: string | null })[]
-> {
-  if (!supabaseConfigured()) return [];
-  const { data, error } = await adminClient()
-    .from("availability_exceptions")
-    .select("id, date, kind, start_time, end_time, slot_minutes, note")
-    .gte("date", studioDateKey(new Date()))
-    .order("date", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as (AvailabilityException & {
-    id: string;
-    note: string | null;
-  })[];
 }

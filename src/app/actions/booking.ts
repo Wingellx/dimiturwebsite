@@ -27,6 +27,8 @@ export async function createBooking(
   }
 
   const startsAt = String(formData.get("startsAt") ?? "").trim();
+  const endsAt = String(formData.get("endsAt") ?? "").trim();
+  const session = String(formData.get("session") ?? "").trim();
   const clientName = String(formData.get("clientName") ?? "").trim();
   const clientEmail = String(formData.get("clientEmail") ?? "").trim();
   const clientPhone = String(formData.get("clientPhone") ?? "").trim();
@@ -38,15 +40,24 @@ export async function createBooking(
   if (!EMAIL_PATTERN.test(clientEmail)) {
     return { ok: false, error: "That email address doesn't look right." };
   }
-  if (!startsAt) return { ok: false, error: "Please choose a time." };
+  if (!startsAt || !endsAt || (session !== "half" && session !== "full")) {
+    return { ok: false, error: "Please choose a session and time." };
+  }
 
   // Re-derive availability on the server and only accept a slot the picker
   // would actually have offered. Without this, a hand-crafted POST could book
-  // 3am on a Sunday, or a time inside the minimum-notice window.
+  // a shift day, a full day over a booked morning, or a time inside the
+  // minimum-notice window. A full day and a morning share a start time, so
+  // the match is on all three fields.
   const availability = await getAvailability();
   const slot = availability
     .flatMap((day) => day.slots)
-    .find((candidate) => candidate.startsAt === startsAt);
+    .find(
+      (candidate) =>
+        candidate.startsAt === startsAt &&
+        candidate.endsAt === endsAt &&
+        candidate.session === session,
+    );
 
   if (!slot) {
     return {
@@ -74,11 +85,11 @@ export async function createBooking(
 
   const supabase = adminClient();
 
-  // The insert is the lock. `bookings_one_confirmed_per_slot` is a partial
-  // unique index, so if two people submit the same slot at the same moment,
-  // exactly one insert succeeds and the other comes back as 23505. Checking
-  // first and inserting after would leave a window between the two where both
-  // requests believe the slot is free.
+  // The insert is the lock. `bookings_no_overlap` is an exclusion constraint
+  // on the booking's time range, so if two people submit overlapping slots at
+  // the same moment (two mornings, or a morning and a full day), exactly one
+  // insert succeeds and the other comes back as 23P01. Checking first and
+  // inserting after would leave a window where both believe the slot is free.
   const { data: booking, error } = await supabase
     .from("bookings")
     .insert({
@@ -87,6 +98,7 @@ export async function createBooking(
       client_phone: clientPhone || null,
       starts_at: slot.startsAt,
       ends_at: slot.endsAt,
+      session_type: slot.session,
       placement: placement || null,
       size_estimate: sizeEstimate || null,
       notes: notes || null,
@@ -95,7 +107,9 @@ export async function createBooking(
     .single();
 
   if (error) {
-    if (error.code === "23505") {
+    // 23P01 = exclusion violation; 23505 kept for databases still on the old
+    // unique index.
+    if (error.code === "23P01" || error.code === "23505") {
       return {
         ok: false,
         slotTaken: true,
@@ -133,6 +147,7 @@ export async function createBooking(
     clientPhone: clientPhone || null,
     startsAt: booking.starts_at as string,
     endsAt: booking.ends_at as string,
+    session: slot.session,
     placement: placement || null,
     sizeEstimate: sizeEstimate || null,
     notes: notes || null,

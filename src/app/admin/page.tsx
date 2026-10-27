@@ -5,20 +5,23 @@ import { isAuthenticated } from "@/lib/admin-auth";
 import {
   listBookings,
   getBookingImages,
-  getAvailabilityRules,
-  getAvailabilityExceptions,
+  getRota,
+  getDayOverrides,
   type Booking,
 } from "@/lib/data";
-import { studioDateLabel, studioTimeLabel } from "@/lib/availability";
 import {
-  logout,
-  artistCancelBooking,
-  markCompleted,
-  saveRule,
-  deleteRule,
-  closeDate,
-  deleteException,
-} from "@/app/actions/admin";
+  bookingHorizon,
+  dateRange,
+  planForDate,
+  studioDateKey,
+  studioDateLabel,
+  studioTimeLabel,
+  type DayOverride,
+  type RotaSettings,
+} from "@/lib/availability";
+import { site } from "@/lib/config";
+import { logout, artistCancelBooking, markCompleted } from "@/app/actions/admin";
+import { AdminCalendar, type DayTile } from "@/components/admin-calendar";
 
 export const metadata: Metadata = {
   title: "Studio admin",
@@ -27,15 +30,37 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-const DAY_NAMES = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-];
+/** One tile per date from today to the booking horizon. */
+function buildTiles(
+  rota: RotaSettings,
+  overrides: DayOverride[],
+  bookings: Booking[],
+): DayTile[] {
+  const confirmed = bookings.filter((b) => b.status === "confirmed");
+  return dateRange(studioDateKey(new Date()), bookingHorizon()).map((date) => {
+    const plan = planForDate(date, rota, overrides);
+    const midday = plan.window ? plan.window.start : "10:00";
+    return {
+      date,
+      plan,
+      rotaOpen: planForDate(date, rota, []).open,
+      bookings: confirmed
+        .filter((b) => studioDateKey(b.starts_at) === date)
+        .map((b) => ({
+          reference: b.reference,
+          client_name: b.client_name,
+          session_type: b.session_type,
+          part:
+            b.session_type === "full"
+              ? "Full day"
+              : studioTimeLabel(b.starts_at) === midday
+                ? "Morning"
+                : "Afternoon",
+          time: `${studioTimeLabel(b.starts_at)}–${studioTimeLabel(b.ends_at)}`,
+        })),
+    };
+  });
+}
 
 /**
  * Kept outside the component because it reads the clock — a server component
@@ -63,10 +88,10 @@ function splitBookings(bookings: Booking[]): {
 export default async function AdminPage() {
   if (!(await isAuthenticated())) redirect("/admin/login");
 
-  const [bookings, rules, exceptions] = await Promise.all([
+  const [bookings, rota, overrides] = await Promise.all([
     listBookings(),
-    getAvailabilityRules(),
-    getAvailabilityExceptions(),
+    getRota(),
+    getDayOverrides(studioDateKey(new Date()), bookingHorizon()),
   ]);
 
   const { upcoming, past } = splitBookings(bookings);
@@ -122,172 +147,17 @@ export default async function AdminPage() {
       </section>
 
       <section className="mb-16">
-        <h2 className="mb-2 font-display text-2xl">Weekly hours</h2>
+        <h2 className="mb-2 font-display text-2xl">Your diary</h2>
         <p className="mb-5 text-sm text-muted">
-          These repeat every week. Slot length decides how long each appointment
-          runs, so set it to how long you actually want a session to be.
+          Worked out from your rota. Tap any day to close it, open it, or change its hours.
         </p>
-
-        <ul className="mb-6 divide-y divide-line border-y border-line">
-          {rules.length === 0 ? (
-            <li className="py-5 text-sm text-muted">
-              No hours set, so nobody can book until you add some.
-            </li>
-          ) : (
-            rules.map((rule) => (
-              <li
-                key={rule.id}
-                className="flex flex-wrap items-center justify-between gap-3 py-3.5"
-              >
-                <div className="text-sm">
-                  <span className="font-medium">{DAY_NAMES[rule.day_of_week]}</span>
-                  <span className="text-ink-soft">
-                    {" "}
-                    · {rule.start_time.slice(0, 5)}–{rule.end_time.slice(0, 5)}
-                  </span>
-                  <span className="text-muted">
-                    {" "}
-                    · {rule.slot_minutes / 60}h sessions
-                  </span>
-                </div>
-                <form action={deleteRule}>
-                  <input type="hidden" name="id" value={rule.id} />
-                  <button
-                    type="submit"
-                    className="text-sm text-muted underline underline-offset-4 hover:text-ink"
-                  >
-                    Remove
-                  </button>
-                </form>
-              </li>
-            ))
-          )}
-        </ul>
-
-        <form
-          action={saveRule}
-          className="grid gap-3 rounded-sm border border-line bg-paper-raised p-4 sm:grid-cols-5 sm:items-end"
-        >
-          <label className="block text-sm">
-            <span className="mb-1.5 block font-medium">Day</span>
-            <select
-              name="dayOfWeek"
-              defaultValue="2"
-              className="h-11 w-full rounded-sm border border-line-strong bg-paper px-2 text-base"
-            >
-              {DAY_NAMES.map((name, index) => (
-                <option key={name} value={index}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1.5 block font-medium">From</span>
-            <input
-              type="time"
-              name="startTime"
-              defaultValue="10:00"
-              required
-              className="h-11 w-full rounded-sm border border-line-strong bg-paper px-2 text-base"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1.5 block font-medium">To</span>
-            <input
-              type="time"
-              name="endTime"
-              defaultValue="18:00"
-              required
-              className="h-11 w-full rounded-sm border border-line-strong bg-paper px-2 text-base"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1.5 block font-medium">Session</span>
-            <select
-              name="slotMinutes"
-              defaultValue="240"
-              className="h-11 w-full rounded-sm border border-line-strong bg-paper px-2 text-base"
-            >
-              <option value="60">1 hour</option>
-              <option value="120">2 hours</option>
-              <option value="180">3 hours</option>
-              <option value="240">4 hours</option>
-              <option value="360">6 hours</option>
-            </select>
-          </label>
-          <button
-            type="submit"
-            className="h-11 rounded-sm bg-ink px-4 text-sm font-medium text-paper"
-          >
-            Add hours
-          </button>
-        </form>
-      </section>
-
-      <section>
-        <h2 className="mb-2 font-display text-2xl">Days off</h2>
-        <p className="mb-5 text-sm text-muted">
-          Block a single date for a holiday, convention or anything else. This overrides
-          your weekly hours.
-        </p>
-
-        {exceptions.length > 0 ? (
-          <ul className="mb-6 divide-y divide-line border-y border-line">
-            {exceptions.map((exception) => (
-              <li
-                key={exception.id}
-                className="flex items-center justify-between gap-3 py-3.5 text-sm"
-              >
-                <span>
-                  <span className="font-medium">{exception.date}</span>
-                  {exception.note ? (
-                    <span className="text-muted"> · {exception.note}</span>
-                  ) : null}
-                </span>
-                <form action={deleteException}>
-                  <input type="hidden" name="id" value={exception.id} />
-                  <button
-                    type="submit"
-                    className="text-muted underline underline-offset-4 hover:text-ink"
-                  >
-                    Remove
-                  </button>
-                </form>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        <form
-          action={closeDate}
-          className="grid gap-3 rounded-sm border border-line bg-paper-raised p-4 sm:grid-cols-3 sm:items-end"
-        >
-          <label className="block text-sm">
-            <span className="mb-1.5 block font-medium">Date</span>
-            <input
-              type="date"
-              name="date"
-              required
-              className="h-11 w-full rounded-sm border border-line-strong bg-paper px-2 text-base"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1.5 block font-medium">Reason (optional)</span>
-            <input
-              type="text"
-              name="note"
-              placeholder="Holiday"
-              className="h-11 w-full rounded-sm border border-line-strong bg-paper px-3 text-base"
-            />
-          </label>
-          <button
-            type="submit"
-            className="h-11 rounded-sm bg-ink px-4 text-sm font-medium text-paper"
-          >
-            Block date
-          </button>
-        </form>
+        {rota ? (
+          <AdminCalendar days={buildTiles(rota, overrides, bookings)} rota={rota} />
+        ) : (
+          <p className="rounded-sm border border-dashed border-line-strong px-5 py-10 text-center text-sm text-muted">
+            The rota hasn&apos;t been set up in the database yet.
+          </p>
+        )}
       </section>
 
       {past.length > 0 ? (
@@ -335,6 +205,9 @@ function BookingCard({
           <p className="font-medium">
             {studioDateLabel(booking.starts_at)} ·{" "}
             {studioTimeLabel(booking.starts_at)}–{studioTimeLabel(booking.ends_at)}
+          </p>
+          <p className="mt-0.5 text-xs tracking-[0.08em] text-muted uppercase">
+            {site.sessions[booking.session_type].label} · {site.sessions[booking.session_type].price}
           </p>
           <p className="mt-1 text-sm text-ink-soft">
             {booking.client_name} ·{" "}

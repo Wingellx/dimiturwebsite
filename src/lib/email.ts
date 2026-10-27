@@ -12,6 +12,7 @@ type BookingEmailInput = {
   clientPhone?: string | null;
   startsAt: string;
   endsAt: string;
+  session: "half" | "full";
   placement?: string | null;
   sizeEstimate?: string | null;
   notes?: string | null;
@@ -58,6 +59,7 @@ export async function sendClientConfirmation(
         <p style="margin:0 0 20px">Hi ${escapeHtml(booking.clientName)}, your appointment with ${site.artist} is confirmed.</p>
         <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">When</td><td style="padding:8px 0;font-weight:600">${when(booking.startsAt, booking.endsAt)}</td></tr>
+          <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Session</td><td style="padding:8px 0">${site.sessions[booking.session].label} (${site.sessions[booking.session].price})</td></tr>
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Reference</td><td style="padding:8px 0;font-family:ui-monospace,monospace">${booking.reference}</td></tr>
           ${booking.placement ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Placement</td><td style="padding:8px 0">${escapeHtml(booking.placement)}</td></tr>` : ""}
           ${booking.sizeEstimate ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Size</td><td style="padding:8px 0">${escapeHtml(booking.sizeEstimate)}</td></tr>` : ""}
@@ -88,6 +90,7 @@ export async function sendArtistNotification(
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">New booking</h1>
         <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">When</td><td style="padding:8px 0;font-weight:600">${when(booking.startsAt, booking.endsAt)}</td></tr>
+          <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Session</td><td style="padding:8px 0">${site.sessions[booking.session].label} (${site.sessions[booking.session].price})</td></tr>
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Name</td><td style="padding:8px 0">${escapeHtml(booking.clientName)}</td></tr>
           <tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Email</td><td style="padding:8px 0">${escapeHtml(booking.clientEmail)}</td></tr>
           ${booking.clientPhone ? `<tr><td style="padding:8px 0;color:#8a8580;font-size:14px">Phone</td><td style="padding:8px 0">${escapeHtml(booking.clientPhone)}</td></tr>` : ""}

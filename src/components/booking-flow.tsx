@@ -6,14 +6,15 @@ import { useFormStatus } from "react-dom";
 import { createBooking, type BookingState } from "@/app/actions/booking";
 import { downscaleImage } from "@/lib/image-resize";
 import { site } from "@/lib/config";
-import type { DayAvailability, Slot } from "@/lib/availability";
+import type { DayAvailability, SessionType, Slot } from "@/lib/availability";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-type Step = "date" | "time" | "details";
+type Step = "session" | "date" | "time" | "details";
 
 export function BookingFlow({ availability }: { availability: DayAvailability[] }) {
-  const [step, setStep] = useState<Step>("date");
+  const [step, setStep] = useState<Step>("session");
+  const [session, setSession] = useState<SessionType | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [files, setFiles] = useState<File[]>([]);
@@ -23,14 +24,19 @@ export function BookingFlow({ availability }: { availability: DayAvailability[] 
     { ok: false },
   );
 
-  // Days that actually have something free. Everything else renders disabled.
+  // Days that have something free of the chosen session type. Everything else
+  // renders disabled. Before a session is chosen this counts either type, so
+  // the "no dates" state still means genuinely nothing.
   const slotsByDate = useMemo(() => {
     const map = new Map<string, Slot[]>();
     for (const day of availability) {
-      if (day.slots.length > 0) map.set(day.date, day.slots);
+      const slots = session
+        ? day.slots.filter((slot) => slot.session === session)
+        : day.slots;
+      if (slots.length > 0) map.set(day.date, slots);
     }
     return map;
-  }, [availability]);
+  }, [availability, session]);
 
   // If the slot went while they were filling in details, drop them back on the
   // picker rather than leaving them staring at an error above a form they
@@ -41,7 +47,7 @@ export function BookingFlow({ availability }: { availability: DayAvailability[] 
   if (state !== seenState) {
     setSeenState(state);
     if (state.slotTaken) {
-      setStep("date");
+      setStep(session ? "date" : "session");
       setSelectedSlot(null);
     }
   }
@@ -79,14 +85,34 @@ export function BookingFlow({ availability }: { availability: DayAvailability[] 
         </p>
       ) : null}
 
+      {step === "session" ? (
+        <SessionPicker
+          availability={availability}
+          onSelect={(choice) => {
+            setSession(choice);
+            setSelectedDate(null);
+            setSelectedSlot(null);
+            setStep("date");
+          }}
+        />
+      ) : null}
+
       {step === "date" ? (
         <DatePicker
           slotsByDate={slotsByDate}
           selected={selectedDate}
+          onBack={() => setStep("session")}
           onSelect={(date) => {
             setSelectedDate(date);
-            setSelectedSlot(null);
-            setStep("time");
+            // A full day has exactly one slot, so there is no time to choose.
+            const daySlots = slotsByDate.get(date) ?? [];
+            if (session === "full" && daySlots.length === 1) {
+              setSelectedSlot(daySlots[0]);
+              setStep("details");
+            } else {
+              setSelectedSlot(null);
+              setStep("time");
+            }
           }}
         />
       ) : null}
@@ -106,6 +132,8 @@ export function BookingFlow({ availability }: { availability: DayAvailability[] 
       {step === "details" && selectedSlot ? (
         <form action={formAction} className="space-y-8">
           <input type="hidden" name="startsAt" value={selectedSlot.startsAt} />
+          <input type="hidden" name="endsAt" value={selectedSlot.endsAt} />
+          <input type="hidden" name="session" value={selectedSlot.session} />
 
           <SelectedSummary
             slot={selectedSlot}
@@ -133,6 +161,7 @@ export function BookingFlow({ availability }: { availability: DayAvailability[] 
 
 function Steps({ current }: { current: Step }) {
   const steps: { key: Step; label: string }[] = [
+    { key: "session", label: "Session" },
     { key: "date", label: "Date" },
     { key: "time", label: "Time" },
     { key: "details", label: "Details" },
@@ -162,13 +191,59 @@ function Steps({ current }: { current: Step }) {
   );
 }
 
+function SessionPicker({
+  availability,
+  onSelect,
+}: {
+  availability: DayAvailability[];
+  onSelect: (session: SessionType) => void;
+}) {
+  const offered = (session: SessionType) =>
+    availability.some((day) => day.slots.some((slot) => slot.session === session));
+
+  return (
+    <div>
+      <p className="font-display text-2xl">How long do you need?</p>
+      <p className="mt-1 mb-6 text-sm text-muted">
+        Not sure? Pick a half day and mention it in your notes. Dimitar will
+        let you know if the piece needs longer.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {(["half", "full"] as const).map((key) => {
+          const option = site.sessions[key];
+          const available = offered(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              disabled={!available}
+              onClick={() => onSelect(key)}
+              className="min-h-28 rounded-sm border border-line-strong px-5 py-5 text-left transition-colors hover:border-ink disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="flex items-baseline justify-between gap-3">
+                <span className="font-display text-2xl">{option.label}</span>
+                <span className="text-lg font-medium">{option.price}</span>
+              </span>
+              <span className="mt-2 block text-sm text-muted">
+                {available ? option.length : "No dates free right now"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function DatePicker({
   slotsByDate,
   selected,
+  onBack,
   onSelect,
 }: {
   slotsByDate: Map<string, Slot[]>;
   selected: string | null;
+  onBack: () => void;
   onSelect: (date: string) => void;
 }) {
   const openDates = useMemo(
@@ -189,6 +264,13 @@ function DatePicker({
 
   return (
     <div>
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-5 text-sm text-muted hover:text-ink"
+      >
+        ← Change session
+      </button>
       <div className="mb-5 flex items-center justify-between">
         <button
           type="button"
@@ -290,10 +372,10 @@ function TimePicker({
         All times shown are studio local time.
       </p>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+      <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
         {slots.map((slot) => (
           <button
-            key={slot.startsAt}
+            key={`${slot.startsAt}-${slot.endsAt}`}
             type="button"
             onClick={() => onSelect(slot)}
             className="min-h-12 rounded-sm border border-line-strong px-4 py-3 text-sm transition-colors hover:border-ink hover:bg-ink hover:text-paper"
