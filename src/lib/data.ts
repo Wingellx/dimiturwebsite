@@ -1,6 +1,7 @@
 import "server-only";
 
 import { publicClient, adminClient, supabaseConfigured } from "./supabase";
+import type { BookingStatus } from "./policy";
 import {
   buildAvailability,
   bookingHorizon,
@@ -30,12 +31,31 @@ export type Booking = {
   size_estimate: string | null;
   notes: string | null;
   session_type: SessionType;
-  status: "confirmed" | "cancelled" | "completed";
+  status: BookingStatus;
+  created_at: string;
+  cancel_token: string;
+  pending_expires_at: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  deposit_paid_at: string | null;
+  stripe_refund_id: string | null;
+  refunded_at: string | null;
+  refund_locked: boolean;
+};
+
+export type BookingMove = {
+  booking_id: string;
+  old_starts_at: string;
+  old_ends_at: string;
+  new_starts_at: string;
+  new_ends_at: string;
+  reason: string | null;
+  moved_by: "client" | "artist";
   created_at: string;
 };
 
 const BOOKING_COLUMNS =
-  "id, reference, client_name, client_email, client_phone, starts_at, ends_at, placement, size_estimate, notes, session_type, status, created_at";
+  "id, reference, client_name, client_email, client_phone, starts_at, ends_at, placement, size_estimate, notes, session_type, status, created_at, cancel_token, pending_expires_at, stripe_checkout_session_id, stripe_payment_intent_id, deposit_paid_at, stripe_refund_id, refunded_at, refund_locked";
 
 /**
  * Availability for the whole bookable window.
@@ -130,13 +150,17 @@ export async function getPortfolio(): Promise<PortfolioItem[]> {
   return staticPortfolio;
 }
 
-/** Admin-side: every booking, newest appointment first. */
+/**
+ * Admin-side: every real booking, earliest appointment first. Unpaid holds and
+ * abandoned checkouts are left out — they were never appointments.
+ */
 export async function listBookings(): Promise<Booking[]> {
   if (!supabaseConfigured()) return [];
 
   const { data, error } = await adminClient()
     .from("bookings")
     .select(BOOKING_COLUMNS)
+    .in("status", ["confirmed", "cancelled", "completed"])
     .order("starts_at", { ascending: true });
 
   if (error) throw error;
@@ -180,6 +204,30 @@ export async function getBookingByReference(
     .eq("reference", reference.toUpperCase())
     .maybeSingle();
 
+  if (error) return null;
+  return (data as Booking) ?? null;
+}
+
+/** Admin-side: move history per booking id, oldest first. */
+export async function getBookingMoves(bookingIds: string[]): Promise<Map<string, BookingMove[]>> {
+  const out = new Map<string, BookingMove[]>();
+  if (!supabaseConfigured() || bookingIds.length === 0) return out;
+  const { data, error } = await adminClient()
+    .from("booking_moves")
+    .select("booking_id, old_starts_at, old_ends_at, new_starts_at, new_ends_at, reason, moved_by, created_at")
+    .in("booking_id", bookingIds)
+    .order("created_at", { ascending: true });
+  if (error) return out;
+  for (const move of (data ?? []) as BookingMove[]) {
+    out.set(move.booking_id, [...(out.get(move.booking_id) ?? []), move]);
+  }
+  return out;
+}
+
+/** Server-side lookup for the webhook and client actions. */
+export async function getBookingById(id: string): Promise<Booking | null> {
+  if (!supabaseConfigured()) return null;
+  const { data, error } = await adminClient().from("bookings").select(BOOKING_COLUMNS).eq("id", id).maybeSingle();
   if (error) return null;
   return (data as Booking) ?? null;
 }
