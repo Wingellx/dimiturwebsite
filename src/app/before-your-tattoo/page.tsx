@@ -27,8 +27,7 @@ const SECTIONS: { title: string; points: string[] }[] = [
       "Eat a proper meal one to two hours before. Low blood sugar is the main reason people feel faint.",
       "Keep drinking water, and go easy on coffee and energy drinks.",
       "Wear loose, comfortable clothes that give easy access to the area, ideally not white.",
-      "Bring snacks, a drink and a charged phone, especially for a full day.",
-      "Come on your own or with one person at most. It's a small, private space.",
+      "Come on your own. It's a small, private space.",
     ],
   },
   {
