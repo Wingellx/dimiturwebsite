@@ -119,6 +119,8 @@ export async function sendCancellationNotice(input: {
   endsAt: string;
   cancelledBy: "client" | "artist";
   refunded: RefundOutcome;
+  /** Dim's message to the client when he cancels. */
+  note?: string | null;
 }): Promise<{ ok: boolean; error?: string }> {
   const resend = client();
   if (!resend) return { ok: false, error: "RESEND_API_KEY not set" };
@@ -135,6 +137,7 @@ export async function sendCancellationNotice(input: {
       html: shell(`
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">Appointment cancelled</h1>
         <p style="margin:0 0 20px">The appointment on <strong>${when(input.startsAt, input.endsAt)}</strong> (ref ${input.reference}) has been cancelled${input.cancelledBy === "artist" ? " by the studio" : ""}. That slot is now free for someone else.</p>
+        ${input.note ? `<div style="margin:0 0 20px;padding:12px 14px;background:#f3efe9;border-radius:4px"><p style="margin:0 0 6px;font-size:13px;color:#8a8580">Message from ${site.artist.split(" ")[0]}</p><p style="margin:0;white-space:pre-wrap">${escapeHtml(input.note)}</p></div>` : ""}
         ${input.refunded.status === "refunded" ? `<p style="margin:0 0 20px">${formatPence(input.refunded.amountPence)} has been refunded to your card${input.refunded.amountPence < site.deposit.amountPence ? ` (your ${site.deposit.label} deposit minus the ${formatPence(site.deposit.amountPence - input.refunded.amountPence)} card processing fee, which isn't refundable)` : ""}. It usually shows within 5–10 working days.</p>` : ""}
         ${input.refunded.status === "failed" ? `<p style="margin:0 0 20px">Your deposit refund is being processed and will reach your card shortly.</p>` : ""}
         <p style="margin:0"><a href="${siteUrl()}/book" style="color:#1a1a1a">Book another time</a></p>

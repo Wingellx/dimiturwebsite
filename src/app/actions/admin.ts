@@ -54,6 +54,7 @@ export async function artistCancelBooking(formData: FormData): Promise<void> {
   await requireAdmin();
 
   const id = String(formData.get("id") ?? "");
+  const note = String(formData.get("note") ?? "").trim().slice(0, 1000) || null;
   if (!id) return;
   const booking = await getBookingById(id);
   if (!booking || booking.status !== "confirmed") return;
@@ -64,6 +65,7 @@ export async function artistCancelBooking(formData: FormData): Promise<void> {
       status: "cancelled",
       cancelled_at: new Date().toISOString(),
       cancelled_by: "artist",
+      cancellation_note: note,
     })
     .eq("id", id)
     .eq("status", "confirmed")
@@ -80,6 +82,7 @@ export async function artistCancelBooking(formData: FormData): Promise<void> {
       endsAt: booking.ends_at,
       cancelledBy: "artist",
       refunded,
+      note,
     });
   }
 

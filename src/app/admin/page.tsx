@@ -196,6 +196,7 @@ export default async function AdminPage() {
                   }
                 >
                   {booking.status}
+                  {booking.cancellation_note ? ` — “${booking.cancellation_note}”` : ""}
                 </span>
               </li>
             ))}
@@ -322,15 +323,32 @@ function BookingCard({
             Mark done
           </button>
         </form>
-        <form action={artistCancelBooking}>
-          <input type="hidden" name="id" value={booking.id} />
-          <button
-            type="submit"
-            className="rounded-sm border border-line-strong px-4 py-2 text-sm text-muted hover:border-ink hover:text-ink"
-          >
-            Cancel, refund & notify client
-          </button>
-        </form>
+        {/* A disclosure, not a straight button: cancelling refunds money and
+            emails the client, so it takes two taps and offers a message. */}
+        <details className="w-full sm:w-auto">
+          <summary className="inline-flex cursor-pointer list-none rounded-sm border border-line-strong px-4 py-2 text-sm text-muted hover:border-ink hover:text-ink">
+            Cancel…
+          </summary>
+          <form action={artistCancelBooking} className="mt-3 space-y-3 rounded-sm border border-line bg-paper p-3">
+            <input type="hidden" name="id" value={booking.id} />
+            <label className="block text-sm">
+              <span className="mb-1.5 block font-medium">Message to {booking.client_name} (optional)</span>
+              <textarea
+                name="note"
+                rows={3}
+                maxLength={1000}
+                placeholder="e.g. Sorry, I'm unwell — I'll message you to rebook."
+                className="w-full rounded-sm border border-line-strong bg-paper-raised px-3 py-2.5 text-base"
+              />
+            </label>
+            <p className="text-xs text-muted">
+              They&apos;re refunded the full {site.deposit.label} and emailed this message.
+            </p>
+            <button type="submit" className="h-11 w-full rounded-sm bg-ink px-4 text-sm font-medium text-paper">
+              Cancel, refund & notify client
+            </button>
+          </form>
+        </details>
       </div>
     </li>
   );

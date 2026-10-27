@@ -121,6 +121,15 @@ export default async function BookingPage({
           </p>
         )}
 
+        {cancelled && booking.cancellation_note ? (
+          <div className="mt-5 rounded-sm border border-line bg-paper-raised p-4 text-sm leading-relaxed">
+            <p className="text-xs tracking-[0.1em] text-muted uppercase">
+              Message from {site.artist.split(" ")[0]}
+            </p>
+            <p className="mt-2 whitespace-pre-wrap">{booking.cancellation_note}</p>
+          </div>
+        ) : null}
+
         <dl className="mt-9 divide-y divide-line border-y border-line">
           <Row label="When">
             {studioDateLabel(booking.starts_at)}
