@@ -130,7 +130,7 @@ export function sessionSummary(
   type: BookingSession,
   priceLabel?: string | null,
 ): { label: string; price: string } {
-  if (type === "custom") return { label: "Custom session", price: priceLabel?.trim() || "" };
+  if (type === "custom") return { label: "Custom session", price: formatPriceLabel(priceLabel) };
   return { label: site.sessions[type].label, price: site.sessions[type].price };
 }
 
@@ -143,4 +143,10 @@ export function sessionText(type: BookingSession, priceLabel?: string | null): s
 export function instagramUrl(): string | null {
   const handle = site.contact.instagram.replace("@", "").trim();
   return handle ? `https://www.instagram.com/${handle}/` : null;
+}
+
+/** "35" or "35.50" → "£35" / "£35.50"; anything with words or a symbol is kept as typed. */
+export function formatPriceLabel(value?: string | null): string {
+  const trimmed = value?.trim() ?? "";
+  return /^\d+(\.\d{1,2})?$/.test(trimmed) ? `£${trimmed}` : trimmed;
 }

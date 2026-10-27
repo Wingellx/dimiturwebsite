@@ -67,3 +67,12 @@ test("formatPence", () => {
   expect(formatPence(4905)).toBe("£49.05");
   expect(formatPence(95)).toBe("£0.95");
 });
+
+test("formatPriceLabel adds £ to bare numbers only", async () => {
+  const { formatPriceLabel } = await import("./config");
+  expect(formatPriceLabel("35")).toBe("£35");
+  expect(formatPriceLabel("35.50")).toBe("£35.50");
+  expect(formatPriceLabel("£80")).toBe("£80");
+  expect(formatPriceLabel("80 cash")).toBe("80 cash");
+  expect(formatPriceLabel(null)).toBe("");
+});

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Resend } from "resend";
-import { site, emailFrom, siteUrl, sessionText, TERMS_SENTENCE, type BookingSession } from "./config";
+import { site, emailFrom, siteUrl, sessionText, formatPriceLabel, TERMS_SENTENCE, type BookingSession } from "./config";
 import { studioDateLabel, studioTimeLabel } from "./availability";
 import { formatPence } from "./policy";
 import type { RefundOutcome } from "./booking-changes";
@@ -251,7 +251,7 @@ export async function sendDepositRequest(input: {
       subject: `Secure your appointment: ${when(input.startsAt, input.endsAt)}`,
       html: shell(`
         <h1 style="font-size:22px;font-weight:600;margin:0 0 20px">Your appointment is held for you</h1>
-        <p style="margin:0 0 20px">Hi ${escapeHtml(input.clientName)}, ${site.artist} has set aside <strong>${when(input.startsAt, input.endsAt)}</strong> for you${input.priceLabel ? ` (${escapeHtml(input.priceLabel)})` : ""}. Pay the ${site.deposit.label} deposit within 23 hours to confirm it. It comes off your final price.</p>
+        <p style="margin:0 0 20px">Hi ${escapeHtml(input.clientName)}, ${site.artist} has set aside <strong>${when(input.startsAt, input.endsAt)}</strong> for you${input.priceLabel ? ` (${escapeHtml(formatPriceLabel(input.priceLabel))})` : ""}. Pay the ${site.deposit.label} deposit within 23 hours to confirm it. It comes off your final price.</p>
         <p style="margin:0 0 24px"><a href="${input.payUrl}" style="display:inline-block;background:#14110f;color:#faf8f5;padding:12px 20px;border-radius:4px;text-decoration:none">Pay ${site.deposit.label} deposit</a></p>
         <p style="margin:0;font-size:14px;color:#5a5550">${TERMS_SENTENCE}</p>
       `),
