@@ -15,6 +15,8 @@ type SiteConfig = {
     directions: string;
   };
   contact: { email: string; phone: string; instagram: string };
+  /** Shown to clients when they choose; the site does not charge these. */
+  sessions: Record<"half" | "full", { label: string; price: string; length: string }>;
   timezone: string;
   bookingWindowDays: number;
   minimumNoticeHours: number;
@@ -40,6 +42,10 @@ export const site: SiteConfig = {
     email: "",
     phone: "",
     instagram: "",
+  },
+  sessions: {
+    half: { label: "Half day", price: "£150", length: "4 hours" },
+    full: { label: "Full day", price: "£250", length: "Whole day" },
   },
   /**
    * IANA zone the studio physically sits in. Every slot the client sees is a

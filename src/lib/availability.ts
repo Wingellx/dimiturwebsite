@@ -1,19 +1,36 @@
 import { TZDate } from "@date-fns/tz";
 import { site } from "./config";
 
-export type AvailabilityRule = {
-  day_of_week: number;
-  start_time: string; // "HH:MM:SS"
-  end_time: string;
-  slot_minutes: number;
+export type SessionType = "half" | "full";
+
+/**
+ * Dim's shift-job rota. `pattern` is one letter per day starting at
+ * `anchor_date`: W = at the shift job, O = off, which is a tattoo day. It
+ * repeats forever in both directions.
+ */
+export type RotaSettings = {
+  pattern: string;
+  anchor_date: string; // "YYYY-MM-DD"
+  day_start: string; // "HH:MM" or "HH:MM:SS"
+  day_end: string;
 };
 
-export type AvailabilityException = {
+/** A one-off change to a single date, made by Dim from the admin calendar. */
+export type DayOverride = {
   date: string; // "YYYY-MM-DD"
-  kind: "closed" | "open";
+  open: boolean;
+  /** Both set for custom hours (full day only), both null for default hours. */
   start_time: string | null;
   end_time: string | null;
-  slot_minutes: number | null;
+};
+
+export type DayPlan = {
+  date: string;
+  source: "rota" | "override";
+  open: boolean;
+  window: { start: string; end: string } | null;
+  /** False when the day has custom hours: those days sell a full day only. */
+  halves: boolean;
 };
 
 export type TakenSlot = { starts_at: string; ends_at: string };
@@ -22,7 +39,8 @@ export type Slot = {
   /** ISO instant. This is what gets submitted and stored. */
   startsAt: string;
   endsAt: string;
-  /** "10:00" in studio-local time, for display. */
+  session: SessionType;
+  /** "Morning · 10:00–14:00" in studio-local time, for display. */
   label: string;
 };
 
@@ -103,12 +121,6 @@ export function studioDateLabel(instant: Date | string): string {
   }).format(d);
 }
 
-/** Studio-local weekday index (0 = Sunday), matching availability_rules. */
-function studioWeekday(date: string): number {
-  const [year, month, day] = parseDate(date);
-  return new TZDate(year, month - 1, day, 12, 0, 0, 0, site.timezone).getDay();
-}
-
 /** Every "YYYY-MM-DD" from `from` to `to` inclusive. */
 export function dateRange(from: string, to: string): string[] {
   const out: string[] = [];
@@ -123,38 +135,68 @@ export function dateRange(from: string, to: string): string[] {
   return out;
 }
 
-type Block = { start: string; end: string; slotMinutes: number };
+/** "10:00:00" or "10:00" -> "10:00", so database and form values compare equal. */
+function hhmm(value: string): string {
+  return value.slice(0, 5);
+}
 
-/** The open blocks for one date, after exceptions are applied to the weekly rules. */
-function blocksForDate(
+function minutesOf(value: string): number {
+  const { hours, minutes } = parseTime(value);
+  return hours * 60 + minutes;
+}
+
+function minutesToHhmm(total: number): string {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Whole calendar days from `from` to `to`, both "YYYY-MM-DD". */
+function daysBetween(from: string, to: string): number {
+  const [fy, fm, fd] = parseDate(from);
+  const [ty, tm, td] = parseDate(to);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / (24 * 60 * MINUTE));
+}
+
+/**
+ * Counts calendar dates, never instants, so the two days a year the clocks
+ * change cannot shift which day of the rota a date lands on.
+ */
+export function isRotaWorkingDay(date: string, rota: RotaSettings): boolean {
+  const length = rota.pattern.length;
+  const index = ((daysBetween(rota.anchor_date, date) % length) + length) % length;
+  return rota.pattern[index] === "W";
+}
+
+/** What a date offers once the rota and any override for it are combined. */
+export function planForDate(
   date: string,
-  rules: AvailabilityRule[],
-  exceptions: AvailabilityException[],
-): Block[] {
-  const onThisDate = exceptions.filter((e) => e.date === date);
+  rota: RotaSettings,
+  overrides: DayOverride[],
+): DayPlan {
+  const defaultWindow = { start: hhmm(rota.day_start), end: hhmm(rota.day_end) };
+  const override = overrides.find((o) => o.date === date);
 
-  // A 'closed' exception wins outright — that is the point of it.
-  if (onThisDate.some((e) => e.kind === "closed")) return [];
-
-  const extraOpen = onThisDate.filter(
-    (e) => e.kind === "open" && e.start_time && e.end_time,
-  );
-  if (extraOpen.length > 0) {
-    return extraOpen.map((e) => ({
-      start: e.start_time as string,
-      end: e.end_time as string,
-      slotMinutes: e.slot_minutes ?? 180,
-    }));
+  if (override) {
+    if (!override.open) {
+      return { date, source: "override", open: false, window: null, halves: false };
+    }
+    const custom = override.start_time && override.end_time
+      ? { start: hhmm(override.start_time), end: hhmm(override.end_time) }
+      : null;
+    const window = custom ?? defaultWindow;
+    const isDefault = window.start === defaultWindow.start && window.end === defaultWindow.end;
+    return { date, source: "override", open: true, window, halves: isDefault };
   }
 
-  const weekday = studioWeekday(date);
-  return rules
-    .filter((r) => r.day_of_week === weekday)
-    .map((r) => ({
-      start: r.start_time,
-      end: r.end_time,
-      slotMinutes: r.slot_minutes,
-    }));
+  const open = !isRotaWorkingDay(date, rota);
+  return {
+    date,
+    source: "rota",
+    open,
+    window: open ? defaultWindow : null,
+    halves: open,
+  };
 }
 
 function overlapsTaken(
@@ -167,6 +209,21 @@ function overlapsTaken(
   return taken.some((t) => s < t.end && e > t.start);
 }
 
+/** The sessions a day's plan would sell, before anything is taken. */
+function candidateSlots(plan: DayPlan): { session: SessionType; name: string; start: string; end: string }[] {
+  if (!plan.open || !plan.window) return [];
+  const { start, end } = plan.window;
+  const out = [{ session: "full" as const, name: "Full day", start, end }];
+  if (plan.halves) {
+    const middle = minutesToHhmm((minutesOf(start) + minutesOf(end)) / 2);
+    out.push(
+      { session: "half" as const, name: "Morning", start, end: middle },
+      { session: "half" as const, name: "Afternoon", start: middle, end },
+    );
+  }
+  return out;
+}
+
 /**
  * The single source of truth for "what can someone book".
  *
@@ -174,11 +231,11 @@ function overlapsTaken(
  * server when rendering the picker AND inside the booking action when
  * re-validating the chosen slot. A slot that the client sends back is only
  * accepted if this function would have offered it — otherwise a crafted
- * request could book a Sunday at 3am.
+ * request could book a shift day, or a full day on top of a booked morning.
  */
 export function buildAvailability(input: {
-  rules: AvailabilityRule[];
-  exceptions: AvailabilityException[];
+  rota: RotaSettings;
+  overrides: DayOverride[];
   taken: TakenSlot[];
   from: string;
   to: string;
@@ -193,33 +250,24 @@ export function buildAvailability(input: {
   }));
 
   return dateRange(input.from, input.to).map((date) => {
+    const plan = planForDate(date, input.rota, input.overrides);
     const slots: Slot[] = [];
 
-    for (const block of blocksForDate(date, input.rules, input.exceptions)) {
-      const blockStart = studioInstant(date, parseTime(block.start));
-      const blockEnd = studioInstant(date, parseTime(block.end));
-      const step = block.slotMinutes * MINUTE;
+    for (const candidate of candidateSlots(plan)) {
+      const startsAt = studioInstant(date, parseTime(candidate.start));
+      const endsAt = studioInstant(date, parseTime(candidate.end));
 
-      for (
-        let cursor = blockStart.getTime();
-        cursor + step <= blockEnd.getTime();
-        cursor += step
-      ) {
-        const startsAt = new Date(cursor);
-        const endsAt = new Date(cursor + step);
+      if (startsAt.getTime() < earliest) continue;
+      if (overlapsTaken(startsAt, endsAt, taken)) continue;
 
-        if (startsAt.getTime() < earliest) continue;
-        if (overlapsTaken(startsAt, endsAt, taken)) continue;
-
-        slots.push({
-          startsAt: startsAt.toISOString(),
-          endsAt: endsAt.toISOString(),
-          label: studioTimeLabel(startsAt),
-        });
-      }
+      slots.push({
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        session: candidate.session,
+        label: `${candidate.name} · ${studioTimeLabel(startsAt)}–${studioTimeLabel(endsAt)}`,
+      });
     }
 
-    slots.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
     return { date, slots };
   });
 }
